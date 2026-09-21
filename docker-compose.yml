@@ -1,0 +1,79 @@
+version: "3.9"
+
+# NOT deployed by this session — build/run locally when M1 is ready:
+#   docker compose up --build
+# then, once, apply migrations:
+#   docker compose exec api alembic upgrade head
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg15-latest   # ships PostGIS + TimescaleDB in one image
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sih_user
+      POSTGRES_PASSWORD: sih_pass
+      POSTGRES_DB: sih_thermal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sih_user -d sih_thermal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sih_user:sih_pass@db:5432/sih_thermal
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sih_user:sih_pass@db:5432/sih_thermal
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.orchestration.scheduler"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sih_user:sih_pass@db:5432/sih_thermal
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:

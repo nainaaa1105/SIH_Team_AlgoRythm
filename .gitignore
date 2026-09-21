@@ -1,0 +1,11 @@
+.env
+secrets/
+data/
+datasets/
+*.pyc
+__pycache__/
+.venv/
+.gstack/
+.impeccable/
+.pytest_cache/
+.DS_Store

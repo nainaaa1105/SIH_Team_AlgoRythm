@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gdal-bin libgdal-dev libpq-dev gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# The Celery task chain crosses every member's package (M1 dispatches to
+# M2-M5, M2/M3/M5 dispatch back to each other) — the worker needs all of
+# them importable, not just app/.
+COPY app ./app
+COPY classifier ./classifier
+COPY geospatial ./geospatial
+COPY imagery ./imagery
+COPY temporal ./temporal
+
+# Default command runs the Celery worker; the scheduler service overrides
+# this command in docker-compose.yml to run app.orchestration.scheduler instead.
+CMD ["celery", "-A", "app.orchestration.queue.celery_app", "worker", "--loglevel=info"]
