@@ -53,7 +53,7 @@ openpyxl==3.1.5
 
 # --- Tests ---
 pytest==8.3.3
-
+PyJWT>=2.8.0
 # --- Optional, lazily imported — the code degrades (never crashes)
 # without these, per each module's own docstring:
 #   earthengine-api   dormant GEE fallback for land cover / cloud gate /
