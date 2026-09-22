@@ -2436,6 +2436,10 @@
               <div class="ft-ic">&#x1F525;</div><span class="ft-lbl">Crown Fire</span><span
                 class="ft-cnt" id="cnt-crown">0</span>
             </div>
+            <div class="ft-row"><input type="checkbox" id="cb-active-only">
+              <div class="ft-ic">&#x1F7E2;</div><span class="ft-lbl">Active Fires</span><span
+                class="ft-cnt" id="cnt-active">0</span>
+            </div>
           </div>
         </div>
         <div class="acc">
@@ -3083,6 +3087,10 @@
       // badge on/off for a fire that's already visible.
       showWui: true,
       showCrown: true,
+      // Isolate switch, same family as wuiOnly/crownOnly: when on, only
+      // fires whose server-computed status (temporal.status, from real
+      // escalation/PTSI signals) is "Active" are shown. Off by default.
+      activeOnly: false,
     };
 
     // The "critical threat stays visible regardless of the sidebar's
@@ -3502,6 +3510,7 @@
         // match. Same reasoning for a detection whose confidence the
         // feed did not report.
         if (f.type !== null && !filt.types.has(f.type)) return false;
+        if (filt.activeOnly && f.status !== 'Active') return false;
         if (f.confidence && !filt.conf.has(f.confidence)) return false;
         // Missing FRP must not read as 0 and vanish under a raised
         // threshold; only filter on a value that actually exists.
@@ -3714,6 +3723,8 @@
 
       const cntWui = document.getElementById('cnt-wui'); if (cntWui) cntWui.textContent = wuiActive.length;
       const cntCrown = document.getElementById('cnt-crown'); if (cntCrown) cntCrown.textContent = crownActive.length;
+      const cntActive = document.getElementById('cnt-active');
+      if (cntActive) cntActive.textContent = scoped.filter(f => f.status === 'Active').length;
       const cntRdi = document.getElementById('cnt-rdi'); if (cntRdi) cntRdi.textContent = rdiActive.length;
       const badgeRdiN = document.getElementById('badge-rdi-n'); if (badgeRdiN) badgeRdiN.textContent = rdiActive.length;
       // WUI Critical and Crown Fires both stay clickable even at zero —
@@ -4271,6 +4282,8 @@
       if (crownCb) crownCb.addEventListener('change', () => { filt.crownOnly = crownCb.checked; applyFilt(); });
       const rdiCb = document.getElementById('cb-rdi-only');
       if (rdiCb) rdiCb.addEventListener('change', () => { filt.rdiOnly = rdiCb.checked; applyFilt(); });
+      const activeOnlyCb = document.getElementById('cb-active-only');
+      if (activeOnlyCb) activeOnlyCb.addEventListener('change', () => { filt.activeOnly = activeOnlyCb.checked; applyFilt(); });
 
       // The two Live Summary badges are a single-select pair: clicking
       // one isolates the map to that threat class (same override
@@ -4478,6 +4491,7 @@
           rdiOnly: false,
           showWui: true,
           showCrown: true,
+          activeOnly: false,
         };
         Object.keys(FT).forEach(t => { const cb = document.getElementById('cb-' + t); if (cb) cb.checked = true });
         const wuiCb = document.getElementById('cb-wui-only'); if (wuiCb) wuiCb.checked = false;
@@ -4485,6 +4499,7 @@
         const rdiCb = document.getElementById('cb-rdi-only'); if (rdiCb) rdiCb.checked = false;
         const showWuiCb = document.getElementById('cb-show-wui'); if (showWuiCb) showWuiCb.checked = true;
         const showCrownCb = document.getElementById('cb-show-crown'); if (showCrownCb) showCrownCb.checked = true;
+        const activeOnlyCb = document.getElementById('cb-active-only'); if (activeOnlyCb) activeOnlyCb.checked = false;
         // Reset the sensor panel to its default (newest day, both
         // instruments) and rebuild the filter from the boxes, so the
         // controls and the map cannot disagree after a reset.
