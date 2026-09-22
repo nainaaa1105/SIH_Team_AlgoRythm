@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sih162-firesight"
+version = "0.1.0"
+description = "SIH162 (PS162, NTRO) — thermal-anomaly classification and industrial-fire monitoring platform. Single unified project: ingestion, classification, geospatial, imagery, temporal forecasting, and the dashboard/API gateway all live here as top-level packages."
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["app*", "classifier*", "geospatial*", "imagery*", "temporal*", "gateway*", "scripts*"]

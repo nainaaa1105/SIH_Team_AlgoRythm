@@ -1,0 +1,64 @@
+# SIH162 FireSight — single unified project. All six members' code
+# (app/, classifier/, geospatial/, imagery/, temporal/, gateway/) lives
+# under this one root now, so this is the one requirements file for the
+# whole platform — no more per-member `-e ../memberN` editable installs.
+
+# --- Web / API ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+websockets==13.0
+httpx==0.27.2
+
+# --- Database ---
+sqlalchemy==2.0.35
+geoalchemy2==0.15.2
+psycopg2-binary==2.9.9
+alembic==1.13.2
+
+# --- Config / validation ---
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+
+# --- Data / science ---
+numpy==2.1.1
+pandas==2.2.3
+scipy==1.14.1
+scikit-learn==1.5.2
+shapely==2.0.6
+xgboost==2.1.1
+optuna==4.0.0
+shap==0.46.0
+
+# --- Imagery (M4) ---
+pillow==10.4.0
+rasterio==1.3.11
+# EfficientNet-B0, per the architecture doc. CPU wheels:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Optional: without torch every other part of M4 (Dozier, indices, smoke
+# direction, patch fetch) still works and M2 runs tabular-only, which its
+# evidence-weighting engine already handles and explains.
+torch==2.4.1
+torchvision==0.19.1
+
+# --- Ingestion (M1) ---
+requests==2.32.3
+apscheduler==3.10.4
+celery==5.4.0
+redis==5.0.8
+boto3==1.35.24
+tenacity==9.0.0
+netCDF4==1.7.1.post2
+openpyxl==3.1.5
+
+# --- Tests ---
+pytest==8.3.3
+
+# --- Optional, lazily imported — the code degrades (never crashes)
+# without these, per each module's own docstring:
+#   earthengine-api   dormant GEE fallback for land cover / cloud gate /
+#                     Sentinel-2 fetch, all three of which now run for
+#                     real via keyless ESA WorldCover + CDSE instead —
+#                     see geospatial/attribution/landcover_worldcover_cog.py
+#                     and app/ingestion/cdse_client.py
+#   osmnx networkx    evacuation routing (disabled by default)

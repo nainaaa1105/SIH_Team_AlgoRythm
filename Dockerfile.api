@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+# GDAL headers needed by rasterio; libpq-dev for psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gdal-bin libgdal-dev libpq-dev gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# One project now — the gateway (app.main) mounts every member's router,
+# so the image needs all of them, not just app/.
+COPY app ./app
+COPY classifier ./classifier
+COPY geospatial ./geospatial
+COPY imagery ./imagery
+COPY temporal ./temporal
+COPY gateway ./gateway
+COPY static ./static
+COPY alembic.ini .
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
