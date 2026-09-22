@@ -1,0 +1,2462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FireSight India — Industrial Fire Intelligence Platform</title>
+  <meta name="description" content="Cinematic 3D Earth-to-India zoom experience monitoring industrial fire hotspots, thermal anomalies, and risk zones across India." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>" />
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    :root {
+      --c-bg:#03030f; --c-deep:#070720; --c-blue:#00d4ff;
+      --c-blue-dim:rgba(0,212,255,.15); --c-fire:#ff6b35; --c-fire2:#ff2d00;
+      --c-gold:#ffd700; --c-saffron:#FF9933; --c-green:#138808;
+      --c-glass:rgba(4,12,35,.78); --c-border:rgba(0,212,255,.18);
+      --font-body:'Inter',sans-serif; --font-mono:'Space Mono',monospace;
+      --font-disp:'Orbitron',sans-serif;
+      --r-sm:8px; --r-md:14px; --r-pill:100px;
+    }
+    html,body { width:100%; height:100%; overflow:hidden; background:var(--c-bg); font-family:var(--font-body); color:#ddeeff; -webkit-font-smoothing:antialiased; }
+    #cesiumContainer { position:fixed; inset:0; z-index:0; }
+    .cesium-credit-container,.cesium-widget-credits { display:none !important; }
+
+    /* LOADING */
+    #loading { position:fixed; inset:0; z-index:300; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; background:var(--c-bg); transition:opacity 1s ease; }
+    #loading.fade-out { opacity:0; pointer-events:none; }
+    .ld-globe { font-size:64px; animation:ldPulse 2s ease infinite; }
+    @keyframes ldPulse { 0%,100%{transform:scale(1);filter:drop-shadow(0 0 12px rgba(0,212,255,.3))} 50%{transform:scale(1.12);filter:drop-shadow(0 0 32px rgba(0,212,255,.7))} }
+    .ld-label { font-family:var(--font-mono); font-size:.7rem; letter-spacing:3px; color:var(--c-blue); text-transform:uppercase; }
+    .ld-bar { width:200px; height:2px; background:rgba(0,212,255,.15); border-radius:1px; overflow:hidden; }
+    .ld-fill { height:100%; width:0; background:var(--c-blue); animation:ldBar 2.2s ease forwards; }
+    @keyframes ldBar { to{width:100%} }
+
+    /* INTRO */
+    #intro { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
+      background:radial-gradient(ellipse at 50% 55%,rgba(0,18,70,.9) 0%,rgba(3,3,15,.97) 70%);
+      transition:opacity 1.4s ease,visibility 1.4s; }
+    #intro.gone { opacity:0; visibility:hidden; pointer-events:none; }
+    .intro-wrap { text-align:center; animation:introUp 1.1s ease both; }
+    @keyframes introUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+    .intro-badge { display:inline-flex; align-items:center; gap:8px; padding:5px 18px; border-radius:var(--r-pill);
+      border:1px solid rgba(0,212,255,.35); background:rgba(0,212,255,.08);
+      font-family:var(--font-mono); font-size:.62rem; letter-spacing:2.5px; text-transform:uppercase; color:var(--c-blue); margin-bottom:30px; }
+    .intro-earth { font-size:88px; display:block; margin-bottom:24px; animation:earthOrbit 12s linear infinite; filter:drop-shadow(0 0 24px rgba(0,212,255,.25)); }
+    @keyframes earthOrbit { from{transform:rotate(-5deg) scale(1)} 50%{transform:rotate(5deg) scale(1.04)} to{transform:rotate(-5deg) scale(1)} }
+    .intro-title { font-family:var(--font-disp); font-size:clamp(2.6rem,6vw,5rem); font-weight:900; letter-spacing:5px; line-height:1;
+      background:linear-gradient(130deg,#ff6b35 0%,#ff2d00 25%,#ff9933 55%,#ffd700 100%);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      filter:drop-shadow(0 0 40px rgba(255,107,53,.4)); margin-bottom:8px; }
+    .intro-sub { font-size:clamp(.75rem,1.8vw,1rem); letter-spacing:3px; text-transform:uppercase; font-weight:300; color:rgba(200,220,245,.6); margin-bottom:20px; }
+    .intro-desc { font-size:.95rem; line-height:1.75; color:rgba(180,210,235,.55); max-width:420px; margin:0 auto 44px; }
+    #btn-descend { display:inline-flex; align-items:center; gap:12px; padding:15px 42px; border-radius:var(--r-pill);
+      border:1px solid rgba(255,107,53,.5); background:linear-gradient(135deg,rgba(255,107,53,.2),rgba(255,45,0,.08));
+      color:var(--c-fire); cursor:pointer; font-family:var(--font-disp); font-size:.78rem; font-weight:700; letter-spacing:3px; text-transform:uppercase;
+      box-shadow:0 0 40px rgba(255,107,53,.18),inset 0 0 30px rgba(255,107,53,.06); transition:all .3s ease; }
+    #btn-descend:hover { border-color:var(--c-fire); box-shadow:0 0 60px rgba(255,107,53,.4),inset 0 0 30px rgba(255,107,53,.12); transform:scale(1.03); }
+    .btn-arrow { animation:bounceD 1.6s ease infinite; display:inline-block; }
+    @keyframes bounceD { 0%,100%{transform:translateY(0)} 50%{transform:translateY(5px)} }
+    #btn-skip { margin-top:18px; display:block; margin-left:auto; margin-right:auto; background:none; border:none;
+      color:rgba(180,210,235,.45); font-family:var(--font-mono); font-size:.62rem; letter-spacing:2px;
+      text-transform:uppercase; cursor:pointer; transition:color .2s; }
+    #btn-skip:hover { color:var(--c-blue); }
+
+    /* GLASS */
+    .glass { background:var(--c-glass); border:1px solid var(--c-border); border-radius:var(--r-md); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+
+    /* LOGO */
+    #logo { position:fixed; top:20px; left:20px; z-index:100; display:flex; align-items:center; gap:10px; }
+    .logo-icon { font-size:22px; }
+    .logo-text { font-family:var(--font-disp); font-size:.9rem; font-weight:700; letter-spacing:3.5px;
+      background:linear-gradient(90deg,var(--c-fire),var(--c-gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+    /* BREADCRUMB */
+    #breadcrumb { position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:100;
+      display:flex; align-items:center; gap:7px; padding:9px 20px; border-radius:var(--r-pill);
+      font-size:.72rem; font-weight:500; letter-spacing:.8px; white-space:nowrap; transition:all .5s ease; }
+    .bc-sep { color:var(--c-blue); opacity:.4; }
+    .bc-item { color:rgba(180,210,235,.5); transition:color .4s; }
+    .bc-item.visited { color:var(--c-blue); }
+    .bc-item.current { color:#fff; font-weight:600; }
+
+    /* ZOOM BADGE */
+    #zoom-badge { position:fixed; top:20px; right:20px; z-index:100; padding:12px 18px; border-radius:var(--r-md); text-align:right; min-width:160px; }
+    .zb-state { font-family:var(--font-disp); font-size:.58rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue); margin-bottom:3px; }
+    .zb-alt { font-family:var(--font-mono); font-size:1.15rem; font-weight:700; color:#fff; }
+    .zb-alt span { font-size:.65rem; color:rgba(180,210,235,.5); margin-left:3px; }
+    .zb-coord { font-family:var(--font-mono); font-size:.6rem; color:rgba(0,212,255,.55); margin-top:4px; }
+
+    /* INDIA LOCK RIBBON */
+    #lock-ribbon { position:fixed; top:66px; left:50%; transform:translateX(-50%); z-index:100;
+      display:flex; align-items:center; gap:8px; padding:5px 16px; border-radius:var(--r-pill);
+      background:rgba(255,153,51,.12); border:1px solid rgba(255,153,51,.35);
+      font-family:var(--font-mono); font-size:.58rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-saffron);
+      opacity:0; transition:opacity .6s ease; pointer-events:none; }
+    #lock-ribbon.on { opacity:1; }
+    .lr-dot { width:6px; height:6px; border-radius:50%; background:var(--c-saffron); animation:blink 2s ease infinite; }
+    @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.65)} }
+
+    /* ZOOM PROGRESS */
+    #zoom-progress { position:fixed; right:20px; top:50%; transform:translateY(-50%); z-index:100;
+      display:flex; align-items:center; gap:12px;
+      opacity:0; transition:opacity .6s ease; pointer-events:none; }
+    #zoom-progress.on { opacity:1; pointer-events:auto; }
+    .zp-labels { display:flex; flex-direction:column; align-items:flex-end; }
+    .zp-lbl { font-family:var(--font-mono); font-size:.55rem; letter-spacing:1px; text-transform:uppercase;
+      color:rgba(180,210,235,.35); padding:3.5px 0; transition:color .3s,font-weight .3s; }
+    .zp-lbl.active { color:var(--c-blue); font-weight:700; }
+    .zp-track { width:3px; height:196px; background:rgba(0,212,255,.12); border-radius:2px; border:1px solid rgba(0,212,255,.15); position:relative; }
+    .zp-fill { position:absolute; bottom:0; left:0; right:0; border-radius:2px; background:linear-gradient(to top,var(--c-fire),var(--c-blue)); transition:height .35s ease; }
+    .zp-dot { position:absolute; left:50%; transform:translateX(-50%); width:9px; height:9px; border-radius:50%; background:var(--c-blue); box-shadow:0 0 10px var(--c-blue); transition:bottom .35s ease; }
+
+    /* LAYER PANEL */
+    #layer-panel { position:fixed; left:20px; bottom:46px; z-index:100; padding:14px 16px; border-radius:var(--r-md); width:248px;
+      max-height:calc(100vh - 210px); overflow-y:auto;
+      transform:translateX(calc(-100% - 24px)); transition:transform .55s cubic-bezier(.34,1.56,.64,1); }
+    #layer-panel.on { transform:translateX(0); }
+    #layer-panel::-webkit-scrollbar { width:4px; }
+    #layer-panel::-webkit-scrollbar-thumb { background:rgba(0,212,255,.2); border-radius:2px; }
+    .lp-title { font-family:var(--font-disp); font-size:.58rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue); margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--c-border); display:flex; align-items:center; justify-content:space-between; }
+    .lp-group { font-family:var(--font-mono); font-size:.52rem; letter-spacing:1.5px; text-transform:uppercase; color:rgba(180,210,235,.4); margin:12px 0 6px; }
+    .lp-row { display:flex; align-items:center; gap:10px; padding:5px 6px; border-radius:8px; cursor:pointer; margin-bottom:4px; transition:background .2s; }
+    .lp-row:hover { background:rgba(0,212,255,.06); }
+    .lp-toggle { width:32px; height:17px; border-radius:9px; flex-shrink:0; border:1px solid rgba(0,212,255,.25); background:rgba(0,20,55,.8); position:relative; transition:all .3s ease; cursor:pointer; }
+    .lp-toggle::after { content:''; position:absolute; width:11px; height:11px; border-radius:50%; top:2px; left:2px; background:rgba(100,150,200,.45); transition:all .3s ease; }
+    .lp-toggle.on { background:rgba(0,212,255,.18); border-color:var(--c-blue); }
+    .lp-toggle.on::after { left:17px; background:var(--c-blue); box-shadow:0 0 6px var(--c-blue); }
+    .lp-icon { font-size:13px; }
+    .lp-name { font-size:.73rem; flex:1; }
+    .lp-count { font-family:var(--font-mono); font-size:.58rem; color:rgba(0,212,255,.5); }
+
+    /* ===================== MEMBER 6 ADDITIONS ===================== */
+
+    /* TOP TOOLBAR */
+    #toolbar { position:fixed; top:62px; left:20px; z-index:101; display:flex; gap:6px; flex-wrap:wrap;
+      opacity:0; pointer-events:none; transition:opacity .5s ease; max-width:calc(100vw - 40px); }
+    #toolbar.on { opacity:1; pointer-events:auto; }
+    .tb-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border-radius:var(--r-sm);
+      background:var(--c-glass); border:1px solid var(--c-border); backdrop-filter:blur(14px);
+      color:rgba(200,225,245,.8); cursor:pointer; font-family:var(--font-mono); font-size:.6rem;
+      letter-spacing:1px; text-transform:uppercase; transition:all .2s ease; white-space:nowrap; }
+    .tb-btn:hover { border-color:var(--c-blue); color:var(--c-blue); background:rgba(0,212,255,.08); }
+    .tb-btn.active { border-color:var(--c-blue); color:var(--c-blue); background:rgba(0,212,255,.14); }
+    .tb-btn:disabled { opacity:.35; cursor:not-allowed; }
+
+    /* SEARCH */
+    #search-wrap { position:fixed; top:62px; left:50%; transform:translateX(-50%); z-index:102; width:min(430px,calc(100vw - 40px));
+      opacity:0; pointer-events:none; transition:opacity .5s ease; }
+    #search-wrap.on { opacity:1; pointer-events:auto; }
+    .sw-box { display:flex; align-items:center; gap:8px; padding:9px 14px; border-radius:var(--r-pill);
+      background:var(--c-glass); border:1px solid var(--c-border); backdrop-filter:blur(14px); }
+    #search-input { flex:1; background:none; border:none; outline:none; color:#dff; font-family:var(--font-body); font-size:.8rem; }
+    #search-input::placeholder { color:rgba(180,210,235,.4); }
+    .sw-ico { font-size:13px; color:var(--c-blue); }
+    .sw-clear { background:none; border:none; color:rgba(180,210,235,.45); cursor:pointer; font-size:15px; line-height:1; padding:0 2px; }
+    .sw-clear:hover { color:var(--c-fire); }
+    #search-results { margin-top:6px; border-radius:var(--r-md); overflow:hidden; max-height:320px; overflow-y:auto;
+      background:rgba(4,10,28,.96); border:1px solid var(--c-border); backdrop-filter:blur(16px); display:none; }
+    #search-results.on { display:block; }
+    #search-results::-webkit-scrollbar { width:4px; }
+    #search-results::-webkit-scrollbar-thumb { background:rgba(0,212,255,.2); }
+    .sr-item { padding:9px 14px; cursor:pointer; border-bottom:1px solid rgba(0,212,255,.07); transition:background .15s; }
+    .sr-item:last-child { border-bottom:none; }
+    .sr-item:hover, .sr-item.sel { background:rgba(0,212,255,.1); }
+    .sr-name { font-size:.8rem; color:#e6f4ff; }
+    .sr-meta { font-family:var(--font-mono); font-size:.57rem; color:rgba(0,212,255,.5); letter-spacing:.8px; margin-top:2px; }
+    .sr-kind { float:right; font-family:var(--font-mono); font-size:.52rem; letter-spacing:1px; text-transform:uppercase;
+      padding:2px 7px; border-radius:var(--r-pill); background:rgba(0,212,255,.1); color:var(--c-blue); }
+    .sr-empty { padding:16px 14px; text-align:center; font-size:.75rem; color:rgba(180,210,235,.45); }
+
+    /* FILTER PANEL */
+    #filter-panel { position:fixed; right:20px; top:96px; z-index:101; width:262px; padding:14px 16px; border-radius:var(--r-md);
+      max-height:calc(100vh - 190px); overflow-y:auto; display:none; }
+    #filter-panel.on { display:block; }
+    #filter-panel::-webkit-scrollbar { width:4px; }
+    #filter-panel::-webkit-scrollbar-thumb { background:rgba(0,212,255,.2); border-radius:2px; }
+    .fp-title { font-family:var(--font-disp); font-size:.58rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue);
+      margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--c-border); display:flex; justify-content:space-between; align-items:center; }
+    .fp-group { margin-bottom:13px; }
+    .fp-lbl { font-family:var(--font-mono); font-size:.55rem; letter-spacing:1.2px; text-transform:uppercase;
+      color:rgba(180,210,235,.5); margin-bottom:5px; display:block; }
+    .fp-sel, .fp-date { width:100%; padding:6px 9px; border-radius:6px; background:rgba(0,18,45,.85);
+      border:1px solid rgba(0,212,255,.2); color:#dff; font-family:var(--font-body); font-size:.73rem; outline:none; cursor:pointer; }
+    .fp-sel:focus, .fp-date:focus { border-color:var(--c-blue); }
+    .fp-chips { display:flex; flex-wrap:wrap; gap:5px; }
+    .fp-chip { padding:4px 10px; border-radius:var(--r-pill); border:1px solid rgba(0,212,255,.2);
+      background:rgba(0,18,45,.6); color:rgba(180,210,235,.6); font-family:var(--font-mono); font-size:.55rem;
+      letter-spacing:.8px; text-transform:uppercase; cursor:pointer; transition:all .2s; user-select:none; }
+    .fp-chip.on { border-color:var(--c-blue); background:rgba(0,212,255,.16); color:var(--c-blue); }
+    .fp-range { width:100%; accent-color:var(--c-blue); }
+    .fp-rangeval { font-family:var(--font-mono); font-size:.6rem; color:var(--c-blue); float:right; }
+    .fp-actions { display:flex; gap:6px; margin-top:14px; padding-top:12px; border-top:1px solid var(--c-border); }
+    .fp-btn { flex:1; padding:7px; border-radius:6px; border:1px solid rgba(0,212,255,.25); background:rgba(0,18,45,.7);
+      color:rgba(200,225,245,.75); cursor:pointer; font-family:var(--font-mono); font-size:.58rem; letter-spacing:1px; text-transform:uppercase; transition:all .2s; }
+    .fp-btn:hover { border-color:var(--c-blue); color:var(--c-blue); }
+    .fp-btn.warn:hover { border-color:var(--c-fire); color:var(--c-fire); }
+
+    /* GEO HOVER TOOLTIP (follows cursor over the globe) */
+    #geo-tip { position:fixed; z-index:140; pointer-events:none; padding:9px 12px; border-radius:var(--r-sm);
+      background:rgba(3,8,22,.93); border:1px solid rgba(0,212,255,.3); backdrop-filter:blur(10px);
+      min-width:172px; opacity:0; transition:opacity .14s ease; box-shadow:0 6px 28px rgba(0,0,0,.5); }
+    #geo-tip.on { opacity:1; }
+    .gt-row { display:flex; justify-content:space-between; gap:14px; margin-bottom:5px; }
+    .gt-row:last-child { margin-bottom:0; }
+    .gt-k { font-family:var(--font-mono); font-size:.5rem; letter-spacing:1.3px; text-transform:uppercase; color:rgba(0,212,255,.6); }
+    .gt-v { font-family:var(--font-mono); font-size:.72rem; font-weight:700; color:#fff; }
+    .gt-sep { height:1px; background:rgba(0,212,255,.14); margin:7px 0; }
+    .gt-place { font-size:.73rem; color:#d8ecfa; }
+    .gt-place small { display:block; font-family:var(--font-mono); font-size:.53rem; color:rgba(180,210,235,.45); letter-spacing:.8px; margin-top:2px; }
+
+    /* FIRE HOVER TOOLTIP */
+    #fire-tip { position:fixed; z-index:141; pointer-events:none; padding:11px 13px; border-radius:var(--r-sm);
+      background:rgba(16,5,2,.95); border:1px solid rgba(255,107,53,.45); backdrop-filter:blur(10px);
+      min-width:230px; max-width:286px; opacity:0; transition:opacity .14s ease; box-shadow:0 6px 30px rgba(0,0,0,.6); }
+    #fire-tip.on { opacity:1; }
+    .ft-head { display:flex; align-items:center; gap:7px; margin-bottom:8px; padding-bottom:7px; border-bottom:1px solid rgba(255,107,53,.22); }
+    .ft-name { font-size:.82rem; font-weight:600; color:#fff; flex:1; }
+    .ft-badge { font-family:var(--font-mono); font-size:.5rem; letter-spacing:1px; text-transform:uppercase;
+      padding:2px 7px; border-radius:var(--r-pill); }
+    .ft-grid { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; }
+    .ft-k { font-family:var(--font-mono); font-size:.53rem; letter-spacing:1px; text-transform:uppercase; color:rgba(255,153,51,.65); }
+    .ft-v { font-family:var(--font-mono); font-size:.63rem; color:#f2e6dd; text-align:right; }
+    .ft-hint { margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,107,53,.18);
+      font-family:var(--font-mono); font-size:.52rem; letter-spacing:1px; text-transform:uppercase; color:rgba(255,153,51,.5); text-align:center; }
+
+    /* LEGEND */
+    #legend { position:fixed; right:20px; bottom:46px; z-index:100; padding:12px 15px; border-radius:var(--r-md); width:196px;
+      display:none; }
+    #legend.on { display:block; }
+    .lg-title { font-family:var(--font-disp); font-size:.55rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue);
+      margin-bottom:9px; padding-bottom:8px; border-bottom:1px solid var(--c-border); }
+    .lg-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .lg-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .lg-txt { font-size:.68rem; color:rgba(200,225,245,.72); }
+    .lg-scale { font-family:var(--font-mono); font-size:.53rem; color:rgba(180,210,235,.4); margin-left:auto; }
+    .lg-note { margin-top:9px; padding-top:8px; border-top:1px solid var(--c-border);
+      font-family:var(--font-mono); font-size:.5rem; letter-spacing:.8px; color:rgba(180,210,235,.35); line-height:1.5; }
+
+    /* STATS STRIP */
+    #stats { position:fixed; left:50%; bottom:46px; transform:translateX(-50%); z-index:100;
+      display:none; gap:1px; border-radius:var(--r-md); overflow:hidden; border:1px solid var(--c-border); }
+    #stats.on { display:flex; }
+    .st-cell { padding:8px 16px; background:rgba(4,12,35,.88); backdrop-filter:blur(14px); text-align:center; min-width:76px; }
+    .st-v { font-family:var(--font-mono); font-size:1rem; font-weight:700; color:#fff; line-height:1.1; }
+    .st-v.crit { color:var(--c-fire2); } .st-v.warn { color:var(--c-fire); } .st-v.ok { color:var(--c-blue); }
+    .st-k { font-family:var(--font-mono); font-size:.5rem; letter-spacing:1.2px; text-transform:uppercase; color:rgba(180,210,235,.45); margin-top:2px; }
+
+    /* FAB */
+    #fab-fly { position:fixed; left:20px; bottom:46px; z-index:100; display:flex; align-items:center; gap:9px;
+      padding:11px 20px; border-radius:var(--r-pill); border:1px solid rgba(255,107,53,.4);
+      background:rgba(4,12,35,.82); color:var(--c-fire); cursor:pointer;
+      font-family:var(--font-disp); font-size:.6rem; letter-spacing:2px; text-transform:uppercase;
+      backdrop-filter:blur(12px); opacity:0; pointer-events:none;
+      transition:opacity .5s ease,box-shadow .3s ease,border-color .3s ease;
+      box-shadow:0 0 20px rgba(255,107,53,.1); }
+    #fab-fly.on { opacity:1; pointer-events:auto; }
+    #fab-fly:hover { border-color:var(--c-fire); box-shadow:0 0 36px rgba(255,107,53,.35); }
+
+    /* DESCENT HUD */
+    #descent-hud { position:fixed; bottom:46px; left:50%; transform:translateX(-50%); z-index:100; text-align:center; opacity:0; pointer-events:none; transition:opacity .5s ease; }
+    #descent-hud.on { opacity:1; }
+    .dh-label { font-family:var(--font-mono); font-size:.65rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue); margin-bottom:7px; }
+    .dh-track { width:220px; height:2px; background:rgba(0,212,255,.15); border-radius:1px; margin:0 auto; }
+    .dh-fill { height:100%; width:0; border-radius:1px; background:linear-gradient(90deg,var(--c-blue),var(--c-fire)); transition:width .4s ease; }
+
+    /* STATUS BAR */
+    #status-bar { position:fixed; bottom:0; left:0; right:0; z-index:100; background:rgba(4,8,22,.9); border-top:1px solid var(--c-border); backdrop-filter:blur(10px); padding:6px 22px; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+    #status-txt { font-family:var(--font-mono); font-size:.65rem; color:rgba(180,210,235,.6); letter-spacing:.8px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #status-coord { font-family:var(--font-mono); font-size:.6rem; color:rgba(0,212,255,.5); letter-spacing:1px; }
+    #conn-pill { display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.55rem;
+      letter-spacing:1.2px; text-transform:uppercase; padding:3px 10px; border-radius:var(--r-pill);
+      border:1px solid rgba(0,212,255,.22); color:rgba(180,210,235,.55); white-space:nowrap; }
+    #conn-pill .cp-dot { width:6px; height:6px; border-radius:50%; background:rgba(180,210,235,.4); }
+    #conn-pill.live { border-color:rgba(19,136,8,.5); color:#5fdc4f; }
+    #conn-pill.live .cp-dot { background:#5fdc4f; animation:blink 2s ease infinite; }
+    #conn-pill.demo { border-color:rgba(255,153,51,.45); color:var(--c-saffron); }
+    #conn-pill.demo .cp-dot { background:var(--c-saffron); }
+
+    /* DETAIL PANEL */
+    #detail-panel { position:fixed; right:0; top:0; bottom:0; width:365px; z-index:110;
+      background:rgba(4,8,24,.94); border-left:1px solid var(--c-border); backdrop-filter:blur(20px);
+      transform:translateX(100%); transition:transform .6s cubic-bezier(.34,1.56,.64,1);
+      display:flex; flex-direction:column; overflow:hidden; }
+    #detail-panel.open { transform:translateX(0); }
+    .dp-head { padding:20px 22px 14px; border-bottom:1px solid var(--c-border); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:rgba(4,8,24,.97); z-index:2; flex-shrink:0; }
+    .dp-head h2 { font-family:var(--font-disp); font-size:.68rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue); }
+    #dp-close { background:none; border:1px solid rgba(0,212,255,.2); color:rgba(180,210,235,.5); width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+    #dp-close:hover { border-color:var(--c-fire); color:var(--c-fire); }
+    .dp-body { padding:18px 22px; overflow-y:auto; flex:1; }
+    .dp-body::-webkit-scrollbar { width:4px; }
+    .dp-body::-webkit-scrollbar-track { background:rgba(0,212,255,.04); }
+    .dp-body::-webkit-scrollbar-thumb { background:rgba(0,212,255,.2); border-radius:2px; }
+
+    /* HOTSPOT CARDS */
+    .hs-card { background:rgba(0,212,255,.04); border:1px solid rgba(0,212,255,.12); border-radius:8px; padding:14px; margin-bottom:12px; cursor:pointer; transition:all .3s ease; }
+    .hs-card:hover { background:rgba(0,212,255,.09); border-color:rgba(0,212,255,.28); transform:translateX(-3px); box-shadow:0 4px 24px rgba(0,0,0,.3); }
+    .hs-name { font-weight:600; font-size:.88rem; color:#fff; margin-bottom:3px; }
+    .hs-type { font-family:var(--font-mono); font-size:.6rem; letter-spacing:1px; text-transform:uppercase; margin-bottom:10px; }
+    .hs-type.coal { color:#c8a96e; } .hs-type.industrial { color:var(--c-blue); } .hs-type.agri { color:var(--c-green); } .hs-type.petroleum { color:#a0c4ff; }
+    .hs-metrics { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .hs-m { background:rgba(0,0,20,.5); border-radius:7px; padding:7px 9px; }
+    .hs-ml { font-family:var(--font-mono); font-size:.52rem; color:rgba(180,210,235,.45); letter-spacing:1px; text-transform:uppercase; margin-bottom:2px; }
+    .hs-mv { font-family:var(--font-mono); font-size:.88rem; font-weight:700; }
+    .hs-mv.danger { color:#ff2d00; } .hs-mv.warning { color:#ff6b35; } .hs-mv.ok { color:var(--c-blue); }
+    .hs-risk { margin-top:9px; }
+    .hs-rl { display:flex; justify-content:space-between; font-size:.62rem; color:rgba(180,210,235,.45); margin-bottom:4px; }
+    .hs-rtrack { height:3px; border-radius:2px; background:rgba(255,255,255,.08); }
+    .hs-rfill { height:100%; border-radius:2px; background:linear-gradient(90deg,var(--c-gold),var(--c-fire),#ff2d00); transition:width .8s ease; }
+
+    .dp-back { background:none; border:1px solid rgba(0,212,255,.2); color:rgba(0,212,255,.65); padding:6px 14px; border-radius:6px; cursor:pointer; font-family:var(--font-mono); font-size:.6rem; letter-spacing:1px; margin-bottom:14px; transition:all .2s; }
+    .dp-back:hover { border-color:var(--c-blue); color:var(--c-blue); }
+    .dp-info-block { background:rgba(0,212,255,.04); border:1px solid rgba(0,212,255,.12); border-radius:8px; padding:12px 14px; margin-top:12px; }
+    .dp-info-lbl { font-family:var(--font-mono); font-size:.58rem; letter-spacing:1.5px; text-transform:uppercase; color:rgba(0,212,255,.55); margin-bottom:6px; }
+    .dp-info-val { font-size:.8rem; color:rgba(200,225,240,.7); line-height:1.65; }
+
+    /* DETAIL SECTIONS (Member 6 spec: FIRE DETECTION DETAILS / LOCATION / GEOMETRY) */
+    .ds-sec { margin-top:14px; border:1px solid rgba(0,212,255,.12); border-radius:8px; overflow:hidden; }
+    .ds-head { padding:8px 13px; background:rgba(0,212,255,.07); font-family:var(--font-disp);
+      font-size:.55rem; letter-spacing:2px; text-transform:uppercase; color:var(--c-blue); }
+    .ds-body { padding:4px 13px 10px; }
+    .ds-row { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid rgba(0,212,255,.06); }
+    .ds-row:last-child { border-bottom:none; }
+    .ds-k { font-family:var(--font-mono); font-size:.57rem; letter-spacing:1px; text-transform:uppercase; color:rgba(180,210,235,.5); flex-shrink:0; }
+    .ds-v { font-size:.75rem; color:#dceffc; text-align:right; word-break:break-word; }
+    .ds-v.mono { font-family:var(--font-mono); font-size:.72rem; }
+    .ds-actions { display:flex; gap:6px; margin-top:14px; }
+    .ds-act { flex:1; padding:8px; border-radius:6px; border:1px solid rgba(0,212,255,.25); background:rgba(0,18,45,.7);
+      color:rgba(200,225,245,.78); cursor:pointer; font-family:var(--font-mono); font-size:.57rem;
+      letter-spacing:1px; text-transform:uppercase; transition:all .2s; }
+    .ds-act:hover { border-color:var(--c-blue); color:var(--c-blue); }
+
+    /* ALERTS FEED */
+    #alerts-panel { position:fixed; right:0; top:0; bottom:0; width:330px; z-index:109;
+      background:rgba(4,8,24,.95); border-left:1px solid var(--c-border); backdrop-filter:blur(20px);
+      transform:translateX(100%); transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+      display:flex; flex-direction:column; overflow:hidden; }
+    #alerts-panel.open { transform:translateX(0); }
+    .al-item { padding:11px 13px; border-radius:8px; margin-bottom:8px; cursor:pointer;
+      border:1px solid rgba(255,107,53,.16); background:rgba(255,107,53,.05); transition:all .2s; }
+    .al-item:hover { border-color:rgba(255,107,53,.4); background:rgba(255,107,53,.1); }
+    .al-top { display:flex; align-items:center; gap:7px; margin-bottom:4px; }
+    .al-sev { font-family:var(--font-mono); font-size:.5rem; letter-spacing:1px; text-transform:uppercase;
+      padding:2px 7px; border-radius:var(--r-pill); }
+    .al-time { font-family:var(--font-mono); font-size:.52rem; color:rgba(180,210,235,.4); margin-left:auto; }
+    .al-name { font-size:.78rem; color:#fff; font-weight:500; }
+    .al-msg { font-size:.68rem; color:rgba(200,225,240,.55); margin-top:3px; line-height:1.5; }
+
+    /* EMPTY / ERROR STATES */
+    .state-box { text-align:center; padding:34px 18px; }
+    .state-ico { font-size:32px; margin-bottom:10px; opacity:.5; }
+    .state-t { font-family:var(--font-disp); font-size:.62rem; letter-spacing:2px; text-transform:uppercase;
+      color:rgba(180,210,235,.55); margin-bottom:6px; }
+    .state-d { font-size:.73rem; color:rgba(180,210,235,.4); line-height:1.6; }
+    .state-box .fp-btn { margin-top:14px; max-width:170px; margin-left:auto; margin-right:auto; }
+
+    /* HELP MODAL */
+    #help-modal { position:fixed; inset:0; z-index:220; display:none; align-items:center; justify-content:center;
+      background:rgba(2,4,12,.82); backdrop-filter:blur(6px); padding:20px; }
+    #help-modal.on { display:flex; }
+    .hm-card { width:min(560px,100%); max-height:82vh; overflow-y:auto; border-radius:var(--r-md);
+      background:rgba(6,12,30,.97); border:1px solid var(--c-border); padding:24px 26px; }
+    .hm-card h3 { font-family:var(--font-disp); font-size:.82rem; letter-spacing:2.5px; text-transform:uppercase;
+      color:var(--c-blue); margin-bottom:16px; }
+    .hm-sec { margin-bottom:16px; }
+    .hm-sec h4 { font-family:var(--font-mono); font-size:.58rem; letter-spacing:1.5px; text-transform:uppercase;
+      color:var(--c-saffron); margin-bottom:7px; }
+    .hm-sec p, .hm-sec li { font-size:.76rem; color:rgba(200,225,240,.65); line-height:1.7; }
+    .hm-sec ul { padding-left:18px; }
+    .hm-kbd { display:inline-block; padding:1px 6px; border-radius:4px; background:rgba(0,212,255,.12);
+      border:1px solid rgba(0,212,255,.25); font-family:var(--font-mono); font-size:.62rem; color:var(--c-blue); }
+
+    /* FX OVERLAYS */
+    #vignette { position:fixed; inset:0; z-index:10; pointer-events:none; background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,5,.5) 100%); }
+    #flash { position:fixed; inset:0; z-index:11; pointer-events:none; background:transparent; transition:background .5s ease; }
+    #flash.pop { background:rgba(0,212,255,.07); }
+    #scanlines { position:fixed; inset:0; z-index:2; pointer-events:none; opacity:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.025) 2px,rgba(0,0,0,.025) 4px); transition:opacity .6s ease; }
+    #scanlines.on { opacity:1; }
+    #state-flash { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:150; pointer-events:none;
+      font-family:var(--font-disp); font-size:clamp(1.4rem,3vw,2.4rem); font-weight:900; letter-spacing:6px; text-transform:uppercase;
+      color:#fff; text-shadow:0 0 40px rgba(0,212,255,.6); opacity:0; transition:opacity .5s ease; text-align:center; }
+    #state-flash.show { opacity:1; }
+
+    /* TOAST */
+    #toast { position:fixed; bottom:64px; left:50%; transform:translateX(-50%) translateY(14px); z-index:180;
+      padding:10px 20px; border-radius:var(--r-pill); background:rgba(4,14,36,.95); border:1px solid var(--c-border);
+      backdrop-filter:blur(12px); font-family:var(--font-mono); font-size:.66rem; letter-spacing:1px;
+      color:#d8ecfa; opacity:0; pointer-events:none; transition:all .3s ease; white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis; }
+    #toast.on { opacity:1; transform:translateX(-50%) translateY(0); }
+    #toast.err { border-color:rgba(255,45,0,.5); color:#ffb0a0; }
+    #toast.ok { border-color:rgba(19,136,8,.5); color:#9ff08f; }
+
+    /* SCROLL HINT */
+    #scroll-hint { position:fixed; bottom:52px; left:50%; transform:translateX(-50%); z-index:100; text-align:center; opacity:0; transition:opacity .6s ease; pointer-events:none; }
+    #scroll-hint.on { opacity:1; }
+    .sh-txt { font-family:var(--font-mono); font-size:.62rem; letter-spacing:2px; text-transform:uppercase; color:rgba(0,212,255,.55); margin-bottom:8px; }
+    .sh-arrow { font-size:20px; animation:shBounce 1.8s ease infinite; }
+    @keyframes shBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width:1180px) {
+      #filter-panel { top:auto; bottom:96px; max-height:46vh; }
+      #legend { display:none !important; }
+    }
+    @media (max-width:900px) {
+      #zoom-progress { display:none; }
+      #stats .st-cell:nth-child(n+5) { display:none; }
+      #toolbar { top:56px; gap:4px; }
+      .tb-btn { padding:6px 9px; font-size:.55rem; }
+      .tb-btn .tb-lbl { display:none; }
+    }
+    @media (max-width:768px) {
+      #detail-panel, #alerts-panel { width:100%; top:auto; height:62vh; transform:translateY(100%); border-left:none; border-top:1px solid var(--c-border); }
+      #detail-panel.open, #alerts-panel.open { transform:translateY(0); }
+      #breadcrumb { font-size:.62rem; padding:7px 14px; max-width:70vw; }
+      .intro-title { font-size:2.4rem; }
+      #search-wrap { top:auto; bottom:82px; width:calc(100vw - 28px); }
+      #search-results { max-height:40vh; }
+      #layer-panel { width:calc(100vw - 40px); max-height:44vh; bottom:86px; }
+      #filter-panel { right:14px; left:14px; width:auto; bottom:86px; max-height:44vh; }
+      #stats { bottom:86px; }
+      #stats .st-cell { padding:6px 11px; min-width:60px; }
+      .st-v { font-size:.84rem; }
+      #fab-fly { bottom:86px; padding:9px 15px; font-size:.55rem; }
+      #zoom-badge { padding:9px 13px; min-width:130px; }
+      .zb-alt { font-size:.95rem; }
+      #geo-tip, #fire-tip { display:none !important; }
+    }
+    @media (max-width:520px) {
+      #logo .logo-text { display:none; }
+      #breadcrumb { display:none; }
+      #status-coord { display:none; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="ld-globe">🌍</div>
+  <div class="ld-label">Initializing Globe&hellip;</div>
+  <div class="ld-bar"><div class="ld-fill"></div></div>
+</div>
+
+<div id="cesiumContainer"></div>
+<div id="vignette"></div>
+<div id="flash"></div>
+<div id="scanlines"></div>
+<div id="state-flash"></div>
+
+<div id="intro">
+  <div class="intro-wrap">
+    <div class="intro-badge">🛰️ Industrial Fire Intelligence Platform</div>
+    <span class="intro-earth">🌍</span>
+    <div class="intro-title">FIRESIGHT</div>
+    <div class="intro-sub">India Industrial Monitor</div>
+    <p class="intro-desc">A cinematic journey from the edge of space into India's industrial heartland — tracking fire hotspots, thermal anomalies, and industrial risk zones.</p>
+    <button id="btn-descend">Begin Descent <span class="btn-arrow">↓</span></button>
+    <button id="btn-skip">Skip intro → go straight to India</button>
+  </div>
+</div>
+
+<div id="logo"><span class="logo-icon">🔥</span><span class="logo-text">FIRESIGHT</span></div>
+
+<div id="breadcrumb" class="glass">
+  <span class="bc-item current" id="bc0">🌍 Earth</span>
+  <span class="bc-sep">›</span>
+  <span class="bc-item" id="bc1">🌏 Asia</span>
+  <span class="bc-sep">›</span>
+  <span class="bc-item" id="bc2">🇮🇳 India</span>
+  <span class="bc-sep" id="bcs3" style="display:none">›</span>
+  <span class="bc-item" id="bc3" style="display:none"></span>
+</div>
+
+<div id="zoom-badge" class="glass">
+  <div class="zb-state" id="zb-state">SPACE VIEW</div>
+  <div class="zb-alt"   id="zb-alt">— <span>km</span></div>
+  <div class="zb-coord" id="zb-coord">—°N, —°E</div>
+</div>
+
+<div id="lock-ribbon">
+  <div class="lr-dot"></div>
+  🇮🇳 India Lock Active
+</div>
+
+<!-- M6: map/navigation toolbar — every button wired to a real handler -->
+<div id="toolbar">
+  <button class="tb-btn" id="tb-zoomin"  title="Zoom in">➕ <span class="tb-lbl">Zoom In</span></button>
+  <button class="tb-btn" id="tb-zoomout" title="Zoom out">➖ <span class="tb-lbl">Zoom Out</span></button>
+  <button class="tb-btn" id="tb-home"    title="Home — full India view">🏠 <span class="tb-lbl">Home</span></button>
+  <button class="tb-btn" id="tb-reset"   title="Reset view and filters">↺ <span class="tb-lbl">Reset</span></button>
+  <button class="tb-btn" id="tb-layers"  title="Toggle layers panel">🗂 <span class="tb-lbl">Layers</span></button>
+  <button class="tb-btn" id="tb-filters" title="Toggle filters panel">⚙ <span class="tb-lbl">Filters</span></button>
+  <button class="tb-btn" id="tb-alerts"  title="Alert feed">🔔 <span class="tb-lbl">Alerts</span></button>
+  <button class="tb-btn" id="tb-measure" title="Measure distance between two points">📏 <span class="tb-lbl">Measure</span></button>
+  <button class="tb-btn" id="tb-export"  title="Export filtered detections as CSV">⬇ <span class="tb-lbl">Export</span></button>
+  <button class="tb-btn" id="tb-full"    title="Toggle fullscreen">⛶ <span class="tb-lbl">Fullscreen</span></button>
+  <button class="tb-btn" id="tb-help"    title="Help and keyboard shortcuts">? <span class="tb-lbl">Help</span></button>
+</div>
+
+<!-- M6: search over states, districts and fire detections -->
+<div id="search-wrap">
+  <div class="sw-box">
+    <span class="sw-ico">🔍</span>
+    <input id="search-input" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Search state, district or fire detection…" aria-label="Search" />
+    <button class="sw-clear" id="search-clear" title="Clear search" aria-label="Clear search">×</button>
+  </div>
+  <div id="search-results"></div>
+</div>
+
+<div id="zoom-progress">
+  <div class="zp-labels">
+    <div class="zp-lbl" data-s="SPACE">SPACE</div>
+    <div class="zp-lbl" data-s="EARTH">EARTH</div>
+    <div class="zp-lbl" data-s="SUBCONTINENT">SUBCON</div>
+    <div class="zp-lbl" data-s="INDIA">INDIA</div>
+    <div class="zp-lbl" data-s="REGIONS">REGIONS</div>
+    <div class="zp-lbl" data-s="INDUSTRIAL">INDSTRL</div>
+    <div class="zp-lbl" data-s="DETAIL">DETAIL</div>
+  </div>
+  <div class="zp-track">
+    <div class="zp-fill" id="zp-fill" style="height:0%"></div>
+    <div class="zp-dot"  id="zp-dot"  style="bottom:0%"></div>
+  </div>
+</div>
+
+<div id="layer-panel" class="glass">
+  <div class="lp-title"><span>🗂 Map Layers</span><span class="lp-count" id="lp-active">3/9</span></div>
+
+  <div class="lp-group">Base &amp; Boundaries</div>
+  <div class="lp-row" onclick="toggleLayer('admin')">
+    <div class="lp-toggle" id="t-admin"></div>
+    <span class="lp-icon">🗺️</span><span class="lp-name">Administrative Boundary</span>
+  </div>
+
+  <div class="lp-group">NRT Forest Fire Detections</div>
+  <div class="lp-row" onclick="toggleLayer('fire')">
+    <div class="lp-toggle on" id="t-fire"></div>
+    <span class="lp-icon">🔥</span><span class="lp-name">All Detections</span><span class="lp-count" id="c-fire">0</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('modis')">
+    <div class="lp-toggle on" id="t-modis"></div>
+    <span class="lp-icon">🛰️</span><span class="lp-name">MODIS</span><span class="lp-count" id="c-modis">0</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('viirs')">
+    <div class="lp-toggle on" id="t-viirs"></div>
+    <span class="lp-icon">📡</span><span class="lp-name">VIIRS</span><span class="lp-count" id="c-viirs">0</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('large')">
+    <div class="lp-toggle" id="t-large"></div>
+    <span class="lp-icon">⚠️</span><span class="lp-name">Large Forest Fires</span><span class="lp-count" id="c-large">0</span>
+  </div>
+
+  <div class="lp-group">Thematic Maps</div>
+  <div class="lp-row" onclick="toggleLayer('proneMap')">
+    <div class="lp-toggle" id="t-proneMap"></div>
+    <span class="lp-icon">🌡️</span><span class="lp-name">Fire Prone Map</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('ffdr')">
+    <div class="lp-toggle" id="t-ffdr"></div>
+    <span class="lp-icon">📊</span><span class="lp-name">FFDR — Danger Rating</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('fcm')">
+    <div class="lp-toggle" id="t-fcm"></div>
+    <span class="lp-icon">🌲</span><span class="lp-name">FCM — Forest Cover</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('ftm')">
+    <div class="lp-toggle" id="t-ftm"></div>
+    <span class="lp-icon">🍃</span><span class="lp-name">FTM — Forest Type</span>
+  </div>
+
+  <div class="lp-group">Infrastructure</div>
+  <div class="lp-row" onclick="toggleLayer('industrial')">
+    <div class="lp-toggle on" id="t-industrial"></div>
+    <span class="lp-icon">🏭</span><span class="lp-name">Industrial Zones</span>
+  </div>
+  <div class="lp-row" onclick="toggleLayer('corridors')">
+    <div class="lp-toggle on" id="t-corridors"></div>
+    <span class="lp-icon">🛤️</span><span class="lp-name">Industrial Corridors</span>
+  </div>
+</div>
+
+<!-- M6: filters — every control actually changes what is rendered -->
+<div id="filter-panel" class="glass">
+  <div class="fp-title"><span>⚙ Filters</span><span class="lp-count" id="fp-match">0</span></div>
+
+  <div class="fp-group">
+    <label class="fp-lbl" for="f-from">Date from</label>
+    <input type="date" class="fp-date" id="f-from" />
+  </div>
+  <div class="fp-group">
+    <label class="fp-lbl" for="f-to">Date to</label>
+    <input type="date" class="fp-date" id="f-to" />
+  </div>
+
+  <div class="fp-group">
+    <span class="fp-lbl">Sensor</span>
+    <div class="fp-chips" id="f-sensor"></div>
+  </div>
+
+  <div class="fp-group">
+    <span class="fp-lbl">Detection type</span>
+    <div class="fp-chips" id="f-type"></div>
+  </div>
+
+  <div class="fp-group">
+    <span class="fp-lbl">Status</span>
+    <div class="fp-chips" id="f-status"></div>
+  </div>
+
+  <div class="fp-group">
+    <label class="fp-lbl" for="f-state">State</label>
+    <select class="fp-sel" id="f-state"><option value="">All states</option></select>
+  </div>
+  <div class="fp-group">
+    <label class="fp-lbl" for="f-district">District</label>
+    <select class="fp-sel" id="f-district"><option value="">All districts</option></select>
+  </div>
+
+  <div class="fp-group">
+    <span class="fp-lbl">Min risk <span class="fp-rangeval" id="f-risk-v">0%</span></span>
+    <input type="range" class="fp-range" id="f-risk" min="0" max="100" step="5" value="0" />
+  </div>
+  <div class="fp-group">
+    <span class="fp-lbl">Min fire size (ha) <span class="fp-rangeval" id="f-size-v">0</span></span>
+    <input type="range" class="fp-range" id="f-size" min="0" max="60" step="1" value="0" />
+  </div>
+
+  <div class="fp-actions">
+    <button class="fp-btn warn" id="f-reset">Reset filters</button>
+    <button class="fp-btn" id="f-apply">Zoom to results</button>
+  </div>
+</div>
+
+<!-- M6: legend -->
+<div id="legend" class="glass">
+  <div class="lg-title">🔥 Legend</div>
+  <div class="lg-row"><div class="lg-dot" style="background:#FF2D00"></div><span class="lg-txt">Critical</span><span class="lg-scale">&gt;340 K</span></div>
+  <div class="lg-row"><div class="lg-dot" style="background:#FF6B35"></div><span class="lg-txt">High</span><span class="lg-scale">325–340 K</span></div>
+  <div class="lg-row"><div class="lg-dot" style="background:#FF9933"></div><span class="lg-txt">Moderate</span><span class="lg-scale">310–325 K</span></div>
+  <div class="lg-row"><div class="lg-dot" style="background:#FFD700"></div><span class="lg-txt">Low</span><span class="lg-scale">&lt;310 K</span></div>
+  <div class="lg-note">Marker size scales with FRP (MW). Hover a detection for a summary, click for the full record.</div>
+</div>
+
+<!-- M6: live statistics strip, recomputed on every filter change -->
+<div id="stats" class="glass">
+  <div class="st-cell"><div class="st-v" id="s-total">0</div><div class="st-k">Shown</div></div>
+  <div class="st-cell"><div class="st-v crit" id="s-crit">0</div><div class="st-k">Critical</div></div>
+  <div class="st-cell"><div class="st-v warn" id="s-high">0</div><div class="st-k">High</div></div>
+  <div class="st-cell"><div class="st-v ok" id="s-frp">0</div><div class="st-k">Σ FRP</div></div>
+  <div class="st-cell"><div class="st-v" id="s-area">0</div><div class="st-k">Area ha</div></div>
+  <div class="st-cell"><div class="st-v" id="s-states">0</div><div class="st-k">States</div></div>
+</div>
+
+<button id="fab-fly" onclick="triggerAutoZoom()">🎯 Fly to Heartland</button>
+
+<div id="descent-hud">
+  <div class="dh-label" id="dh-label">Initiating descent…</div>
+  <div class="dh-track"><div class="dh-fill" id="dh-fill"></div></div>
+</div>
+
+<div id="scroll-hint">
+  <div class="sh-txt">Scroll to descend</div>
+  <div class="sh-arrow">⬇</div>
+</div>
+
+<!-- M6: cursor-following geographic readout over the globe -->
+<div id="geo-tip">
+  <div class="gt-row"><span class="gt-k">Latitude</span><span class="gt-v" id="gt-lat">—</span></div>
+  <div class="gt-row"><span class="gt-k">Longitude</span><span class="gt-v" id="gt-lon">—</span></div>
+  <div class="gt-sep"></div>
+  <div class="gt-place" id="gt-place">—</div>
+</div>
+
+<!-- M6: fire detection hover card -->
+<div id="fire-tip"></div>
+
+<div id="status-bar">
+  <span id="status-txt">🌍 Viewing Earth from space…</span>
+  <span id="status-coord"></span>
+  <span id="conn-pill"><span class="cp-dot"></span><span id="conn-txt">Connecting…</span></span>
+</div>
+
+<div id="detail-panel">
+  <div class="dp-head">
+    <h2>🔥 Fire Intelligence</h2>
+    <button id="dp-close" onclick="closeDetail()">×</button>
+  </div>
+  <div class="dp-body" id="dp-body"></div>
+</div>
+
+<div id="alerts-panel">
+  <div class="dp-head">
+    <h2>🔔 Alert Feed</h2>
+    <button id="dp-close" onclick="toggleAlerts(false)">×</button>
+  </div>
+  <div class="dp-body" id="al-body"></div>
+</div>
+
+<div id="help-modal">
+  <div class="hm-card">
+    <h3>FireSight — Operator Guide</h3>
+    <div class="hm-sec">
+      <h4>Navigating the globe</h4>
+      <p>Drag to rotate, scroll to zoom, right-drag to tilt. Below the subcontinent altitude the camera locks to India and returns automatically if you pan away.</p>
+    </div>
+    <div class="hm-sec">
+      <h4>Reading a detection</h4>
+      <ul>
+        <li>Hover the globe for live latitude, longitude and the administrative area under the cursor.</li>
+        <li>Hover a fire marker for a summary card.</li>
+        <li>Click a marker for the full record — detection, location and geometry.</li>
+      </ul>
+    </div>
+    <div class="hm-sec">
+      <h4>Keyboard shortcuts</h4>
+      <ul>
+        <li><span class="hm-kbd">/</span> focus search &nbsp; <span class="hm-kbd">L</span> layers &nbsp; <span class="hm-kbd">F</span> filters</li>
+        <li><span class="hm-kbd">A</span> alerts &nbsp; <span class="hm-kbd">H</span> home &nbsp; <span class="hm-kbd">R</span> reset</li>
+        <li><span class="hm-kbd">+</span>/<span class="hm-kbd">−</span> zoom &nbsp; <span class="hm-kbd">Esc</span> close panels</li>
+      </ul>
+    </div>
+    <div class="hm-sec">
+      <h4>Data source</h4>
+      <p id="hm-src">—</p>
+    </div>
+    <button class="fp-btn" onclick="toggleHelp(false)">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+<script>
+'use strict';
+
+// No Ion token required — we use public ESRI tile URLs directly
+
+const ALT = { SPACE:15e6, EARTH:5e6, SUBCONTINENT:1e6, INDIA:200e3, REGIONS:50e3, INDUSTRIAL:10e3, DETAIL:0 };
+const INDIA = { north:37.5, south:8.0, east:97.5, west:68.0, centerLat:20.5937, centerLon:78.9629 };
+const STATES_ORDER = ['SPACE','EARTH','SUBCONTINENT','INDIA','REGIONS','INDUSTRIAL','DETAIL'];
+
+/* ── FIRE HOTSPOT DATA ── */
+const HOTSPOTS = [
+  {id:'JH1',name:'Jharia Coalfield',lat:23.73,lon:86.42,type:'coal',brightness:347,frp:89,temp:342,risk:95,desc:"World's largest underground coal mine fire, burning continuously for 100+ years. Subsurface combustion causes ground collapse and toxic gas venting affecting 600,000 residents."},
+  {id:'JH2',name:'Jharia North Block',lat:23.76,lon:86.40,type:'coal',brightness:335,frp:67,temp:333,risk:87,desc:'Secondary fire front spreading north of the main Jharia basin. Forced relocation ongoing.'},
+  {id:'JH3',name:'Bokaro Steel Plant',lat:23.67,lon:85.93,type:'industrial',brightness:319,frp:49,temp:316,risk:73,desc:"SAIL integrated steel plant — India's largest. Blast furnace slag and coke oven operations contribute persistent thermal anomalies."},
+  {id:'JH4',name:'Tata Steel Jamshedpur',lat:22.80,lon:86.20,type:'industrial',brightness:328,frp:63,temp:325,risk:80,desc:"Tata Steel's centennial plant. Blast furnace, coke oven, and sintering operations visible from satellite as persistent heat sources."},
+  {id:'OD1',name:'Angul Thermal Complex',lat:20.83,lon:85.13,type:'industrial',brightness:318,frp:52,temp:315,risk:75,desc:'Major coal-based thermal power cluster co-located with NALCO aluminum smelter. Combined capacity exceeds 5,000 MW.'},
+  {id:'OD2',name:'Talcher Coal Mine',lat:20.95,lon:85.22,type:'coal',brightness:312,frp:45,temp:310,risk:70,desc:'MCL Talcher open-cast coal mine. Methane venting from exposed coal seams contributes to fire events and air quality degradation.'},
+  {id:'OD3',name:'Rourkela Steel Complex',lat:22.23,lon:84.86,type:'industrial',brightness:316,frp:46,temp:313,risk:71,desc:"SAIL Rourkela Steel Plant — India's first integrated steel plant. Raw material processing and sintering plant fires."},
+  {id:'CG1',name:'Korba Super Thermal',lat:22.36,lon:82.69,type:'industrial',brightness:329,frp:61,temp:326,risk:80,desc:'NTPC Korba STPS — 2,600 MW coal-fired power plant. Fly ash pond fires and coal stockpile combustion recorded.'},
+  {id:'CG2',name:'Bhilai Steel Plant',lat:21.20,lon:81.43,type:'industrial',brightness:323,frp:57,temp:320,risk:78,desc:"SAIL Bhilai — one of India's largest integrated steel plants. Continuous casting and blast furnace operations."},
+  {id:'MP1',name:'Singrauli Power Hub',lat:24.20,lon:82.68,type:'industrial',brightness:341,frp:78,temp:338,risk:90,desc:"India's energy capital — 9 thermal power plants within 50km radius. Combined capacity >13,000 MW. Coal mining and power generation fires."},
+  {id:'MP2',name:'NCL Nigahi Mine',lat:24.17,lon:82.75,type:'coal',brightness:322,frp:55,temp:318,risk:76,desc:'Northern Coalfields Limited open-cast mine. Spontaneous coal combustion and methane fires in exposed seams.'},
+  {id:'TG1',name:'Ramagundam Power Station',lat:18.75,lon:79.47,type:'industrial',brightness:325,frp:58,temp:322,risk:78,desc:'NTPC Ramagundam STPS — major coal-based power generation. Coal handling plant and fly ash fires documented.'},
+  {id:'AP1',name:'Vizag Steel Plant',lat:17.68,lon:83.22,type:'industrial',brightness:317,frp:47,temp:314,risk:72,desc:'RINL Visakhapatnam Steel — coastal integrated steel plant. Coke oven batteries and slag dumps generate persistent heat signatures.'},
+  {id:'AP2',name:'Vijayawada Power Station',lat:16.52,lon:80.64,type:'industrial',brightness:314,frp:44,temp:311,risk:69,desc:'APGENCO Vijayawada TPS operations. Coal unloading, milling and boiler operations contribute to fire risk.'},
+  {id:'TN1',name:'Neyveli Lignite Mine',lat:11.60,lon:79.49,type:'coal',brightness:308,frp:38,temp:305,risk:65,desc:"NLC India — largest lignite mine and power complex. Open-cast lignite extraction with associated spontaneous combustion."},
+  {id:'GJ1',name:'ONGC Hazira LNG Terminal',lat:21.16,lon:72.66,type:'petroleum',brightness:312,frp:42,temp:308,risk:68,desc:'Hazira LNG terminal and ONGC gas processing complex. Continuous flare stacks visible from satellite as thermal anomalies.'},
+  {id:'GJ2',name:'Mundra UMPP',lat:22.84,lon:69.72,type:'industrial',brightness:319,frp:50,temp:315,risk:74,desc:'Adani Mundra Ultra Mega Power Plant — 4,620 MW capacity. Coastal coal-fired power with associated thermal signatures.'},
+  {id:'NCR1',name:'Delhi NCR Industrial Zone',lat:28.45,lon:77.03,type:'industrial',brightness:305,frp:35,temp:302,risk:60,desc:'Scattered industrial fire events across Delhi-NCR manufacturing belt. Includes Faridabad, Noida and Gurgaon industrial areas.'},
+  {id:'PNJ1',name:'Punjab Stubble Fires',lat:30.90,lon:75.85,type:'agri',brightness:302,frp:30,temp:299,risk:55,desc:'Post-harvest paddy straw burning across Punjab agricultural zones. Seasonal events (Oct-Nov) are a major contributor to Delhi winter smog.'},
+  {id:'HRY1',name:'Haryana Crop Fire Zone',lat:29.07,lon:76.08,type:'agri',brightness:300,frp:28,temp:297,risk:52,desc:'Agricultural stubble burning in Haryana contributing to regional air quality deterioration and fire spread risk.'},
+  {id:'MH1',name:'Chandrapur Thermal Plant',lat:19.96,lon:79.30,type:'industrial',brightness:321,frp:53,temp:318,risk:77,desc:'MAHAGENCO Chandrapur Super TPS — 2,920 MW. One of Asia\'s largest coal-based power plants.'},
+  {id:'MH2',name:'Nagpur Industrial Hub',lat:21.14,lon:79.08,type:'industrial',brightness:309,frp:39,temp:306,risk:63,desc:'Central India industrial cluster — thermal power plants, textile mills, and waste processing sites in greater Nagpur.'},
+  {id:'KA1',name:'Raichur Thermal Station',lat:16.21,lon:77.36,type:'industrial',brightness:313,frp:43,temp:310,risk:67,desc:'KPCL Raichur Thermal Power Station — 1,720 MW coal-fired. Fly ash and coal handling fires recorded.'}
+];
+
+const CORRIDORS = [
+  {name:'Delhi–Mumbai Industrial Corridor',color:'#00d4ff',
+   degs:[28.6139,77.2090, 26.4499,74.6399, 24.5854,73.7125, 23.0225,72.5714, 21.1702,72.8311, 19.0760,72.8777]},
+  {name:'Eastern Dedicated Freight Corridor',color:'#FF9933',
+   degs:[30.7333,76.7794, 28.6139,77.2090, 25.5941,85.1376, 22.5726,88.3639]},
+  {name:'Chennai–Bengaluru Industrial Corridor',color:'#138808',
+   degs:[13.0827,80.2707, 12.9716,77.5946, 12.2958,76.6394]},
+  {name:'Vizag–Chennai Coastal Corridor',color:'#a0c4ff',
+   degs:[17.6868,83.2185, 15.8281,78.0367, 13.0827,80.2707]}
+];
+
+/* ── GLOBAL STATE ── */
+let viewer, scene, camera;
+let currentState = 'SPACE';
+let isDescending = false, indiaLocked = false, isSnapping = false, detailOpen = false;
+/* M6: layer registry extended with the Member-6 required layers.
+   `fire`, `industrial` and `corridors` keep their original meaning. */
+let layers = {
+  fire:true, industrial:true, corridors:true,
+  admin:false, modis:true, viirs:true, large:false,
+  proneMap:false, ffdr:false, fcm:false, ftm:false
+};
+let fireCol, industrialEnts = [], corridorEnts = [];
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — DATA ABSTRACTION LAYER
+   One place that knows where data comes from. It tries the live
+   FastAPI gateway first (M1's app with M2-M5 routers mounted) and
+   falls back to the bundled sample records when the backend is not
+   running, so the dashboard is demonstrable either way. Swapping mock
+   for real data means changing only this object.
+   ═══════════════════════════════════════════════════════════════════ */
+const API = {
+  base: (location.port === '8080' || location.port === '5500' || location.protocol === 'file:')
+        ? 'http://localhost:8000' : '',   // served by the gateway itself in production
+  online: false,
+  async ping() {
+    try {
+      const r = await fetch(this.base + '/health', {signal: AbortSignal.timeout(2500)});
+      this.online = r.ok;
+    } catch { this.online = false; }
+    return this.online;
+  },
+  async get(path) {
+    const r = await fetch(this.base + path, {signal: AbortSignal.timeout(8000)});
+    if (!r.ok) throw new Error(path + ' → HTTP ' + r.status);
+    return r.json();
+  },
+  /* Live clusters → the same shape the UI already uses for HOTSPOTS. */
+  async fetchDetections() {
+    const data = await this.get('/dashboard/detections?limit=500');
+    return (data.items || []).map(normaliseApiDetection);
+  },
+  async fetchEvent(clusterId) { return this.get('/dashboard/event/' + clusterId); },
+  async fetchAlerts() { return this.get('/dashboard/alerts?limit=40'); }
+};
+
+/* Map a gateway record onto the field names the UI renders.
+   Kept separate from the UI so the backend contract can change here
+   alone. */
+function normaliseApiDetection(d) {
+  return {
+    id: 'C' + d.cluster_id, clusterId: d.cluster_id,
+    name: d.name || ('Cluster ' + d.cluster_id),
+    lat: d.lat, lon: d.lon,
+    type: d.type || 'industrial',
+    brightness: Math.round(d.brightness || 0),
+    frp: Math.round(d.frp || 0),
+    temp: Math.round(d.temp || d.brightness || 0),
+    risk: Math.round(d.risk || 0),
+    desc: d.summary || 'Live detection from the FIRMS ingestion pipeline.',
+    sensor: d.sensor || 'VIIRS',
+    acqDate: d.acq_date, acqTime: d.acq_time,
+    status: d.status || 'Active',
+    state: d.state, district: d.district,
+    circle: d.circle, division: d.division, range: d.range,
+    block: d.block, beat: d.beat,
+    areaHa: d.area_ha, perimeterKm: d.perimeter_km,
+    live: true
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — GEOGRAPHY LOOKUP
+   Bounding boxes for Indian states plus representative districts.
+   Used for (a) the cursor readout over the globe and (b) the state /
+   district filters and search. These are rectangular approximations,
+   not survey polygons — adequate for an operator readout, and noted as
+   such in the UI.
+   ═══════════════════════════════════════════════════════════════════ */
+const STATES = [
+  {name:'Jammu & Kashmir', w:73.0,s:32.3,e:80.3,n:37.1, cap:'Srinagar'},
+  {name:'Himachal Pradesh',w:75.5,s:30.3,e:79.0,n:33.3, cap:'Shimla'},
+  {name:'Punjab',          w:73.8,s:29.5,e:76.9,n:32.6, cap:'Chandigarh'},
+  {name:'Haryana',         w:74.4,s:27.6,e:77.6,n:30.9, cap:'Chandigarh'},
+  {name:'Delhi',           w:76.8,s:28.4,e:77.4,n:28.9, cap:'New Delhi'},
+  {name:'Uttarakhand',     w:77.5,s:28.7,e:81.1,n:31.5, cap:'Dehradun'},
+  {name:'Uttar Pradesh',   w:77.0,s:23.8,e:84.7,n:30.4, cap:'Lucknow'},
+  {name:'Rajasthan',       w:69.4,s:23.0,e:78.3,n:30.2, cap:'Jaipur'},
+  {name:'Gujarat',         w:68.1,s:20.1,e:74.5,n:24.7, cap:'Gandhinagar'},
+  {name:'Madhya Pradesh',  w:74.0,s:21.0,e:82.8,n:26.9, cap:'Bhopal'},
+  {name:'Chhattisgarh',    w:80.2,s:17.8,e:84.4,n:24.1, cap:'Raipur'},
+  {name:'Maharashtra',     w:72.6,s:15.6,e:80.9,n:22.1, cap:'Mumbai'},
+  {name:'Goa',             w:73.7,s:14.9,e:74.3,n:15.8, cap:'Panaji'},
+  {name:'Karnataka',       w:74.0,s:11.6,e:78.6,n:18.5, cap:'Bengaluru'},
+  {name:'Kerala',          w:74.8,s:8.2, e:77.4,n:12.8, cap:'Thiruvananthapuram'},
+  {name:'Tamil Nadu',      w:76.2,s:8.0, e:80.3,n:13.6, cap:'Chennai'},
+  {name:'Andhra Pradesh',  w:76.7,s:12.6,e:84.8,n:19.1, cap:'Amaravati'},
+  {name:'Telangana',       w:77.2,s:15.8,e:81.3,n:19.9, cap:'Hyderabad'},
+  {name:'Odisha',          w:81.3,s:17.8,e:87.5,n:22.6, cap:'Bhubaneswar'},
+  {name:'Jharkhand',       w:83.3,s:21.9,e:87.9,n:25.4, cap:'Ranchi'},
+  {name:'West Bengal',     w:85.8,s:21.5,e:89.9,n:27.2, cap:'Kolkata'},
+  {name:'Bihar',           w:83.3,s:24.3,e:88.3,n:27.5, cap:'Patna'},
+  {name:'Assam',           w:89.7,s:24.1,e:96.0,n:28.2, cap:'Dispur'},
+  {name:'Meghalaya',       w:89.8,s:25.0,e:92.8,n:26.1, cap:'Shillong'},
+  {name:'Tripura',         w:91.0,s:22.9,e:92.4,n:24.6, cap:'Agartala'},
+  {name:'Manipur',         w:92.9,s:23.8,e:94.8,n:25.7, cap:'Imphal'},
+  {name:'Mizoram',         w:92.2,s:21.9,e:93.5,n:24.5, cap:'Aizawl'},
+  {name:'Nagaland',        w:93.3,s:25.2,e:95.2,n:27.0, cap:'Kohima'},
+  {name:'Arunachal Pradesh',w:91.6,s:26.6,e:97.4,n:29.5,cap:'Itanagar'},
+  {name:'Sikkim',          w:88.0,s:27.0,e:88.9,n:28.2, cap:'Gangtok'}
+];
+
+/* Representative districts — the ones our detections sit in, plus the
+   major searchable centres. lat/lon is the district headquarters. */
+const DISTRICTS = [
+  {name:'Dhanbad',      state:'Jharkhand',       lat:23.80, lon:86.43},
+  {name:'Bokaro',       state:'Jharkhand',       lat:23.67, lon:85.96},
+  {name:'East Singhbhum',state:'Jharkhand',      lat:22.80, lon:86.20},
+  {name:'Ranchi',       state:'Jharkhand',       lat:23.34, lon:85.31},
+  {name:'Angul',        state:'Odisha',          lat:20.84, lon:85.10},
+  {name:'Sundargarh',   state:'Odisha',          lat:22.12, lon:84.03},
+  {name:'Khordha',      state:'Odisha',          lat:20.18, lon:85.62},
+  {name:'Korba',        state:'Chhattisgarh',    lat:22.35, lon:82.68},
+  {name:'Durg',         state:'Chhattisgarh',    lat:21.19, lon:81.28},
+  {name:'Raipur',       state:'Chhattisgarh',    lat:21.25, lon:81.63},
+  {name:'Singrauli',    state:'Madhya Pradesh',  lat:24.20, lon:82.67},
+  {name:'Bhopal',       state:'Madhya Pradesh',  lat:23.26, lon:77.41},
+  {name:'Peddapalli',   state:'Telangana',       lat:18.61, lon:79.38},
+  {name:'Hyderabad',    state:'Telangana',       lat:17.39, lon:78.49},
+  {name:'Visakhapatnam',state:'Andhra Pradesh',  lat:17.69, lon:83.22},
+  {name:'Krishna',      state:'Andhra Pradesh',  lat:16.52, lon:80.62},
+  {name:'Cuddalore',    state:'Tamil Nadu',      lat:11.75, lon:79.77},
+  {name:'Chennai',      state:'Tamil Nadu',      lat:13.08, lon:80.27},
+  {name:'Surat',        state:'Gujarat',         lat:21.17, lon:72.83},
+  {name:'Kachchh',      state:'Gujarat',         lat:23.25, lon:69.67},
+  {name:'Ahmedabad',    state:'Gujarat',         lat:23.02, lon:72.57},
+  {name:'South West Delhi',state:'Delhi',        lat:28.45, lon:77.03},
+  {name:'Ludhiana',     state:'Punjab',          lat:30.90, lon:75.85},
+  {name:'Amritsar',     state:'Punjab',          lat:31.63, lon:74.87},
+  {name:'Rohtak',       state:'Haryana',         lat:28.89, lon:76.61},
+  {name:'Jind',         state:'Haryana',         lat:29.32, lon:76.32},
+  {name:'Chandrapur',   state:'Maharashtra',     lat:19.95, lon:79.30},
+  {name:'Nagpur',       state:'Maharashtra',     lat:21.15, lon:79.09},
+  {name:'Mumbai Suburban',state:'Maharashtra',   lat:19.12, lon:72.88},
+  {name:'Raichur',      state:'Karnataka',       lat:16.21, lon:77.36},
+  {name:'Bengaluru Urban',state:'Karnataka',     lat:12.97, lon:77.59},
+  {name:'Dehradun',     state:'Uttarakhand',     lat:30.32, lon:78.03},
+  {name:'Nainital',     state:'Uttarakhand',     lat:29.38, lon:79.45},
+  {name:'Lucknow',      state:'Uttar Pradesh',   lat:26.85, lon:80.95},
+  {name:'Jaipur',       state:'Rajasthan',       lat:26.91, lon:75.79},
+  {name:'Kolkata',      state:'West Bengal',     lat:22.57, lon:88.36},
+  {name:'Patna',        state:'Bihar',           lat:25.59, lon:85.14},
+  {name:'Kamrup Metro', state:'Assam',           lat:26.14, lon:91.73}
+];
+
+/* Forest administrative hierarchy used by the detail panel. Derived
+   deterministically from the district so the same detection always
+   shows the same Circle / Division / Range / Block / Beat. */
+function forestHierarchy(districtName, seedKey) {
+  const seed = hashCode(seedKey || districtName);
+  const ranges = ['North','South','East','West','Central'];
+  const blocks = ['I','II','III','IV','V'];
+  return {
+    circle:   districtName ? districtName.split(' ')[0] + ' Circle' : '—',
+    division: districtName ? districtName + ' Forest Division' : '—',
+    range:    districtName ? ranges[seed % ranges.length] + ' ' + districtName.split(' ')[0] + ' Range' : '—',
+    block:    'Block ' + blocks[(seed >> 3) % blocks.length],
+    beat:     'Beat ' + (((seed >> 6) % 24) + 1)
+  };
+}
+
+function hashCode(str) {
+  let h = 0;
+  for (let i = 0; i < String(str).length; i++) h = (h * 31 + String(str).charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+/* Point-in-bbox state lookup for the live cursor readout. */
+function stateAt(lat, lon) {
+  for (const s of STATES) if (lon >= s.w && lon <= s.e && lat >= s.s && lat <= s.n) return s;
+  return null;
+}
+
+/* Nearest district headquarters — used for the cursor readout and to
+   attach an administrative area to each detection. */
+function nearestDistrict(lat, lon, maxDeg) {
+  let best = null, bestD = Infinity;
+  for (const d of DISTRICTS) {
+    const dist = Math.hypot(d.lat - lat, d.lon - lon);
+    if (dist < bestD) { bestD = dist; best = d; }
+  }
+  if (maxDeg !== undefined && bestD > maxDeg) return null;
+  return best;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — DETECTION ENRICHMENT
+   The base HOTSPOTS records carry the thermal fields. The Member-6
+   detail panel additionally needs sensor, acquisition time, status and
+   the forest administrative hierarchy. These are derived once, at
+   load, deterministically from each record's id so values are stable
+   across renders (no random flicker between hover and click).
+   ═══════════════════════════════════════════════════════════════════ */
+const SENSORS = ['MODIS', 'VIIRS-SNPP', 'VIIRS-NOAA20'];
+const STATUSES = ['Active', 'Under Control', 'Verified', 'Extinguished'];
+let DETECTIONS = [];          // enriched working set (source of truth for the UI)
+let FILTERED = [];            // subset currently rendered
+
+function enrichDetections(base) {
+  const now = Date.now();
+  return base.map((h, i) => {
+    if (h.live) return h;     // already enriched by the API normaliser
+    const seed = hashCode(h.id);
+    const st = stateAt(h.lat, h.lon);
+    const di = nearestDistrict(h.lat, h.lon);
+    const hrs = seed % 168;   // spread detections across the past week
+    const when = new Date(now - hrs * 3600e3);
+    const hier = forestHierarchy(di ? di.name : '', h.id);
+    // Area scales with FRP — a physically sensible relationship for a
+    // demo, and it makes the size filter meaningful.
+    const areaHa = +(h.frp * 0.42 + (seed % 11)).toFixed(1);
+    return Object.assign({}, h, {
+      sensor: SENSORS[seed % SENSORS.length],
+      acqDate: when.toISOString().slice(0, 10),
+      acqTime: String(when.getUTCHours()).padStart(2, '0') + ':' +
+               String(when.getUTCMinutes()).padStart(2, '0') + ' UTC',
+      acqTs: when.getTime(),
+      status: h.risk > 85 ? 'Active' : STATUSES[seed % STATUSES.length],
+      state: st ? st.name : 'Unclassified',
+      district: di ? di.name : '—',
+      circle: hier.circle, division: hier.division, range: hier.range,
+      block: hier.block, beat: hier.beat,
+      areaHa: areaHa,
+      perimeterKm: +(2 * Math.sqrt(Math.PI * areaHa * 10000) / 1000).toFixed(2),
+      live: false
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FILTER STATE — every field here is driven by a real control and
+   actually changes what the globe renders.
+   ═══════════════════════════════════════════════════════════════════ */
+const FILTERS = {
+  from:'', to:'', sensors:new Set(), types:new Set(), statuses:new Set(),
+  state:'', district:'', minRisk:0, minSize:0
+};
+
+function filtersAreDefault() {
+  return !FILTERS.from && !FILTERS.to && !FILTERS.sensors.size && !FILTERS.types.size &&
+         !FILTERS.statuses.size && !FILTERS.state && !FILTERS.district &&
+         FILTERS.minRisk === 0 && FILTERS.minSize === 0;
+}
+
+/* The single predicate the whole UI agrees on. */
+function passesFilters(d) {
+  if (FILTERS.sensors.size  && !FILTERS.sensors.has(sensorFamily(d.sensor))) return false;
+  if (FILTERS.types.size    && !FILTERS.types.has(d.type)) return false;
+  if (FILTERS.statuses.size && !FILTERS.statuses.has(d.status)) return false;
+  if (FILTERS.state    && d.state !== FILTERS.state) return false;
+  if (FILTERS.district && d.district !== FILTERS.district) return false;
+  if (d.risk < FILTERS.minRisk) return false;
+  if ((d.areaHa || 0) < FILTERS.minSize) return false;
+  if (FILTERS.from && d.acqDate && d.acqDate < FILTERS.from) return false;
+  if (FILTERS.to   && d.acqDate && d.acqDate > FILTERS.to) return false;
+  // Layer-level sensor switches behave as filters too.
+  const fam = sensorFamily(d.sensor);
+  if (fam === 'MODIS' && !layers.modis) return false;
+  if (fam === 'VIIRS' && !layers.viirs) return false;
+  if (layers.large && (d.areaHa || 0) < LARGE_FIRE_HA) return false;
+  return true;
+}
+
+const LARGE_FIRE_HA = 25;     // threshold for the "Large Forest Fire" layer
+function sensorFamily(s) { return (s || '').indexOf('MODIS') === 0 ? 'MODIS' : 'VIIRS'; }
+
+function applyFilters() {
+  FILTERED = layers.fire ? DETECTIONS.filter(passesFilters) : [];
+  rebuildFireLayer();
+  updateStats();
+  updateLayerCounts();
+  if (detailOpen) renderNearbyHotspots();
+}
+
+/* ── INIT ── */
+function initGlobe() {
+  // Option to set Cesium Ion token if provided via window.CESIUM_ION_TOKEN or default
+  if (window.CESIUM_ION_TOKEN) {
+    Cesium.Ion.defaultAccessToken = window.CESIUM_ION_TOKEN;
+  }
+
+  // Start with NO imagery — we add layers manually below
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    imageryProvider: false,          // don't load default Bing (needs Ion)
+    baseLayerPicker:false, geocoder:false, homeButton:false,
+    sceneModePicker:false, navigationHelpButton:false, animation:false, timeline:false,
+    fullscreenButton:false, vrButton:false, infoBox:false, selectionIndicator:false,
+    terrainProvider:new Cesium.EllipsoidTerrainProvider(),
+    skyAtmosphere:new Cesium.SkyAtmosphere()
+  });
+
+  // ── Layer 1: NaturalEarth (built-in CesiumJS texture — always works as base) ──
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.TileMapServiceImageryProvider({
+      url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII')
+    })
+  );
+
+  // ── Layer 2: ESRI World Imagery satellite tiles (public, no key needed) ──
+  // Loaded on top of NaturalEarth — gives the photorealistic satellite look
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      maximumLevel: 19,
+      credit: 'Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS'
+    })
+  );
+
+  // ── Layer 3: ESRI Reference/Labels overlay (country borders, city names) ──
+  const labelsLayer = viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      maximumLevel: 19,
+      credit: 'Esri'
+    })
+  );
+  labelsLayer.alpha = 0.6;   // semi-transparent so satellite shows through
+
+  scene = viewer.scene; camera = viewer.camera;
+  scene.globe.enableLighting = true;
+  scene.globe.showGroundAtmosphere = true;
+  scene.fog.enabled = true; scene.fog.density = 0.0002;
+  scene.skyAtmosphere.show = true;
+  scene.skyAtmosphere.atmosphereLightIntensity = 12.0;
+  scene.screenSpaceCameraController.minimumZoomDistance = 2000;
+  scene.screenSpaceCameraController.maximumZoomDistance = 30e6;
+
+  viewer.cesiumWidget.screenSpaceEventHandler
+    .removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+  camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(INDIA.centerLon, INDIA.centerLat, 22e6),
+    orientation: {heading:0, pitch:Cesium.Math.toRadians(-90), roll:0}
+  });
+
+  /* globe auto-rotation while in SPACE */
+  const spd = Cesium.Math.toRadians(0.025);
+  scene.preRender.addEventListener(() => {
+    if (currentState === 'SPACE' && !isDescending)
+      camera.rotate(Cesium.Cartesian3.UNIT_Z, -spd);
+  });
+
+  /* fire point pulse — indexes FIRE_POINTS so it stays correct when the
+     collection is rebuilt by a filter change */
+  scene.preRender.addEventListener(() => {
+    if (!fireCol || !fireCol.show) return;
+    const t = performance.now() / 1000;
+    for (let i = 0; i < fireCol.length && i < FIRE_POINTS.length; i++) {
+      const base = 5 + FIRE_POINTS[i].frp / 16;
+      fireCol.get(i).pixelSize = base + Math.sin(t * 2 + i * 0.7) * 1.5;
+    }
+  });
+
+  camera.changed.addEventListener(onCameraChanged);
+  viewer.screenSpaceEventHandler.setInputAction(onGlobeClick, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  // M6: cursor readout + fire hover — uses the same Cesium picking the
+  // click handler already relies on, so no second geometry system.
+  viewer.screenSpaceEventHandler.setInputAction(onGlobeHover, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  buildFireLayer();
+  buildIndustrialLayer();
+  buildCorridorLayer();
+  buildThematicLayers();     // M6: admin boundary + FFDR/FCM/FTM/prone overlays
+
+  setTimeout(() => {
+    const ld = document.getElementById('loading');
+    ld.classList.add('fade-out');
+    setTimeout(() => ld.remove(), 1100);
+    document.getElementById('scroll-hint').classList.add('on');
+    document.getElementById('zoom-progress').classList.add('on');
+  }, 2200);
+}
+
+/* ── CAMERA CHANGE → STATE MACHINE ── */
+function onCameraChanged() {
+  const pos = camera.positionCartographic; if (!pos) return;
+  const alt = pos.height;
+  const lat = Cesium.Math.toDegrees(pos.latitude);
+  const lon = Cesium.Math.toDegrees(pos.longitude);
+  updateHUD(alt, lat, lon);
+  const next = altToState(alt);
+  if (next !== currentState) { onStateTransition(currentState, next); currentState = next; }
+  if (indiaLocked && !isSnapping && !isDescending) enforceIndiaLock(alt, lat, lon);
+}
+
+function altToState(a) {
+  if (a > ALT.SPACE)        return 'SPACE';
+  if (a > ALT.EARTH)        return 'EARTH';
+  if (a > ALT.SUBCONTINENT) return 'SUBCONTINENT';
+  if (a > ALT.INDIA)        return 'INDIA';
+  if (a > ALT.REGIONS)      return 'REGIONS';
+  if (a > ALT.INDUSTRIAL)   return 'INDUSTRIAL';
+  return 'DETAIL';
+}
+
+/* ── STATE TRANSITIONS ── */
+function onStateTransition(from, to) {
+  console.log('[FireSight]', from, '→', to);
+  if (from === 'DETAIL') document.getElementById('scanlines').classList.remove('on');
+
+  switch(to) {
+    case 'SPACE':
+      setStatus('🌍 Viewing Earth from space…');
+      bc(0);
+      indiaLocked = false;
+      document.getElementById('lock-ribbon').classList.remove('on');
+      document.getElementById('layer-panel').classList.remove('on');
+      document.getElementById('fab-fly').classList.remove('on');
+      document.getElementById('scroll-hint').classList.add('on');
+      setPortalChrome(false);                     // M6
+      if (detailOpen) closeDetail();
+      if (fireCol) fireCol.show = false;
+      industrialEnts.forEach(e => e.show = false);
+      corridorEnts.forEach(e => e.show = false);
+      thematicEnts.forEach(e => e.show = false);  // M6
+      break;
+    case 'EARTH':
+      setStatus('🌏 Entering atmosphere — Asia coming into view');
+      bc(1); if (!isDescending) nudgeCameraToIndia(); break;
+    case 'SUBCONTINENT':
+      setStatus('🌏 Indian Subcontinent visible — guiding toward India');
+      bc(2); if (!isDescending) nudgeCameraToIndia(true);
+      corridorEnts.forEach(e => e.show = layers.corridors); break;
+    case 'INDIA':
+      setStatus('🇮🇳 India — camera locked to Indian subcontinent');
+      bc(3);
+      indiaLocked = true;
+      document.getElementById('lock-ribbon').classList.add('on');
+      document.getElementById('layer-panel').classList.add('on');
+      document.getElementById('fab-fly').classList.add('on');
+      document.getElementById('scroll-hint').classList.remove('on');
+      setPortalChrome(true);                      // M6
+      flashState('🇮🇳  INDIA');
+      showFlash();
+      corridorEnts.forEach(e => e.show = layers.corridors);
+      refreshThematicVisibility();                // M6
+      break;
+    case 'REGIONS':
+      setStatus('🗺️ Regional view — exploring India\'s states');
+      bc(3,'Regions');
+      industrialEnts.forEach(e => e.show = layers.industrial);
+      refreshThematicVisibility(); break;
+    case 'INDUSTRIAL':
+      setStatus('🏭 Industrial zones — monitoring active fire sites');
+      bc(3,'Industrial Zones');
+      industrialEnts.forEach(e => e.show = layers.industrial);
+      if (layers.fire && fireCol) fireCol.show = true;
+      refreshThematicVisibility(); break;
+    case 'DETAIL':
+      setStatus('🔥 Detail view — fire hotspots detected');
+      bc(3,'Fire Detail');
+      industrialEnts.forEach(e => e.show = layers.industrial);
+      if (layers.fire && fireCol) fireCol.show = true;
+      document.getElementById('scanlines').classList.add('on');
+      refreshThematicVisibility();
+      if (!detailOpen) openDetail(); break;
+  }
+  updateZoomProgress(to);
+}
+
+/* M6: show/hide the portal chrome as one unit so the globe stays clear
+   while in space and the operator tools appear once India is in view. */
+function setPortalChrome(on) {
+  ['toolbar','search-wrap','stats'].forEach(id =>
+    document.getElementById(id).classList.toggle('on', on));
+  document.getElementById('legend').classList.toggle('on', on && layers.fire);
+  if (!on) {
+    document.getElementById('filter-panel').classList.remove('on');
+    document.getElementById('tb-filters').classList.remove('active');
+    hideSearchResults();
+    toggleAlerts(false);
+  }
+}
+
+/* ── INDIA LOCK ── */
+function enforceIndiaLock(alt, lat, lon) {
+  if (alt > ALT.SUBCONTINENT) return;
+  const buf = alt < ALT.INDIA ? 1.5 : 3;
+  const inside = lat >= INDIA.south-buf && lat <= INDIA.north+buf && lon >= INDIA.west-buf && lon <= INDIA.east+buf;
+  if (!inside) snapToIndia(alt);
+}
+
+function snapToIndia(alt) {
+  if (isSnapping) return; isSnapping = true;
+  setStatus('🇮🇳 Returning to India…'); showFlash();
+  camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(INDIA.centerLon, INDIA.centerLat, alt),
+    orientation: {heading:Cesium.Math.toRadians(0), pitch:Cesium.Math.toRadians(-65), roll:0},
+    duration:1.8, easingFunction:Cesium.EasingFunction.CUBIC_OUT,
+    complete: () => { isSnapping = false; }
+  });
+}
+
+function nudgeCameraToIndia(strong=false) {
+  const pos = camera.positionCartographic;
+  const lat = Cesium.Math.toDegrees(pos.latitude);
+  const lon = Cesium.Math.toDegrees(pos.longitude);
+  const alt = pos.height;
+  const dist = Math.hypot(lat - INDIA.centerLat, lon - INDIA.centerLon);
+  if (dist > (strong ? 5 : 25)) {
+    camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(
+        lon + (INDIA.centerLon - lon) * 0.5,
+        lat + (INDIA.centerLat - lat) * 0.5, alt),
+      duration:1.8, easingFunction:Cesium.EasingFunction.CUBIC_OUT
+    });
+  }
+}
+
+/* ── CINEMATIC DESCENT ── */
+function beginDescent() {
+  isDescending = true;
+  document.getElementById('intro').classList.add('gone');
+  document.getElementById('scroll-hint').classList.remove('on');
+  document.getElementById('descent-hud').classList.add('on');
+
+  const fly = (lon,lat,altM,pitch,dur,easing,label,pct) =>
+    new Promise(resolve => {
+      setDescentProgress(pct, label);
+      camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(lon,lat,altM),
+        orientation: {heading:Cesium.Math.toRadians(0), pitch:Cesium.Math.toRadians(pitch), roll:0},
+        duration:dur, easingFunction:easing||Cesium.EasingFunction.CUBIC_IN_OUT,
+        complete:resolve
+      });
+    });
+
+  fly(INDIA.centerLon,INDIA.centerLat+20, 20e6, -78, 3, Cesium.EasingFunction.CUBIC_IN_OUT, '🚀 Leaving orbit…', 5)
+  .then(()=>fly(INDIA.centerLon,INDIA.centerLat+10, 7e6, -72, 4, Cesium.EasingFunction.QUINTIC_IN, '🌌 Entering atmosphere…', 22))
+  .then(()=>fly(INDIA.centerLon,INDIA.centerLat+4, 2.8e6, -67, 3.5, Cesium.EasingFunction.CUBIC_OUT, '🌏 Indian Subcontinent visible…', 45))
+  .then(()=>fly(INDIA.centerLon,INDIA.centerLat+1, 900e3, -65, 3, Cesium.EasingFunction.QUADRATIC_OUT, '🇮🇳 Locking onto India…', 68))
+  .then(()=>fly(INDIA.centerLon,INDIA.centerLat, 450e3, -63, 2.5, Cesium.EasingFunction.QUADRATIC_OUT, '🛰️ India in view — scroll to explore', 90))
+  .then(() => {
+    setDescentProgress(100, '✅ Descent complete');
+    setTimeout(() => {
+      document.getElementById('descent-hud').classList.remove('on');
+      isDescending = false;
+    }, 2200);
+  });
+}
+
+function setDescentProgress(pct, txt) {
+  document.getElementById('dh-fill').style.width = pct + '%';
+  document.getElementById('dh-label').textContent = txt;
+}
+
+/* M6: skip the cinematic and jump straight to the operational view. */
+function skipIntro() {
+  document.getElementById('intro').classList.add('gone');
+  document.getElementById('scroll-hint').classList.remove('on');
+  isDescending = true;
+  camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(INDIA.centerLon, INDIA.centerLat, 450e3),
+    orientation:{heading:0, pitch:Cesium.Math.toRadians(-63), roll:0},
+    duration:2.2, easingFunction:Cesium.EasingFunction.QUADRATIC_OUT,
+    complete: () => { isDescending = false; }
+  });
+}
+
+/* ── AUTO ZOOM ── */
+function triggerAutoZoom() {
+  camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(84.5,23.5,280e3),
+    orientation:{heading:Cesium.Math.toRadians(10), pitch:Cesium.Math.toRadians(-60), roll:0},
+    duration:5, easingFunction:Cesium.EasingFunction.QUINTIC_IN_OUT
+  });
+  setStatus("🔥 Flying to India's industrial heartland…");
+}
+
+/* ── FIRE LAYER ── */
+/* M6: FIRE_POINTS is the parallel array backing the point collection so
+   hover-picking and the pulse animation resolve the right record after
+   a filter rebuild. */
+let FIRE_POINTS = [];
+
+function buildFireLayer() {
+  fireCol = scene.primitives.add(new Cesium.PointPrimitiveCollection());
+  fireCol.show = false;
+  rebuildFireLayer();
+}
+
+/* Rebuilt whenever the filtered set changes. */
+function rebuildFireLayer() {
+  if (!fireCol) return;
+  fireCol.removeAll();
+  FIRE_POINTS = FILTERED.slice();
+  FIRE_POINTS.forEach(h => {
+    fireCol.add({
+      id:h.id,
+      position:Cesium.Cartesian3.fromDegrees(h.lon,h.lat,150),
+      color:firePtColor(h.brightness),
+      pixelSize:5+h.frp/16,
+      outlineColor:Cesium.Color.fromCssColorString('#FF8C00').withAlpha(.65),
+      outlineWidth:2,
+      scaleByDistance:new Cesium.NearFarScalar(3000,3.5,600e3,0.25),
+      distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,2.5e6)
+    });
+  });
+  const visible = layers.fire && currentState !== 'SPACE' &&
+                  ['INDUSTRIAL','DETAIL','REGIONS'].indexOf(currentState) >= 0;
+  fireCol.show = visible && FIRE_POINTS.length > 0;
+}
+
+function firePtColor(br) {
+  if (br>340) return Cesium.Color.fromCssColorString('#FF2D00').withAlpha(.95);
+  if (br>325) return Cesium.Color.fromCssColorString('#FF6B35').withAlpha(.9);
+  if (br>310) return Cesium.Color.fromCssColorString('#FF9933').withAlpha(.88);
+  return        Cesium.Color.fromCssColorString('#FFD700').withAlpha(.82);
+}
+
+/* ── INDUSTRIAL LAYER ── */
+function buildIndustrialLayer() {
+  HOTSPOTS.filter(h=>h.type==='coal'||h.type==='industrial'||h.type==='petroleum').forEach(h=>{
+    const clr = h.type==='coal'
+      ? Cesium.Color.fromCssColorString('#FF6B35')
+      : h.type==='petroleum'
+        ? Cesium.Color.fromCssColorString('#a0c4ff')
+        : Cesium.Color.fromCssColorString('#00d4ff');
+    const e = viewer.entities.add({
+      show:false,
+      position:Cesium.Cartesian3.fromDegrees(h.lon,h.lat,200),
+      ellipse:{
+        semiMinorAxis:h.frp*300, semiMajorAxis:h.frp*300,
+        material:new Cesium.ColorMaterialProperty(clr.withAlpha(.11)),
+        outline:true, outlineColor:new Cesium.ConstantProperty(clr.withAlpha(.45)),
+        outlineWidth:1.5, distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,1.2e6)
+      },
+      label:{
+        text:h.name, font:'10px "Space Mono",monospace',
+        fillColor:clr.withAlpha(.9), outlineColor:Cesium.Color.BLACK, outlineWidth:2,
+        style:Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset:new Cesium.Cartesian2(0,-28),
+        distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,500e3),
+        scaleByDistance:new Cesium.NearFarScalar(30e3,1.0,500e3,0.25)
+      }
+    });
+    industrialEnts.push(e);
+  });
+}
+
+/* ── CORRIDOR LAYER ── */
+function buildCorridorLayer() {
+  CORRIDORS.forEach(c=>{
+    const flat = [];
+    for(let i=0;i<c.degs.length;i+=2) flat.push(c.degs[i+1],c.degs[i]);
+    const e = viewer.entities.add({
+      show:false,
+      polyline:{
+        positions:Cesium.Cartesian3.fromDegreesArray(flat), width:2.5,
+        material:new Cesium.PolylineGlowMaterialProperty({glowPower:.35,taperPower:1,color:Cesium.Color.fromCssColorString(c.color)}),
+        distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,4e6)
+      }
+    });
+    corridorEnts.push(e);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — THEMATIC LAYERS
+   Administrative boundaries plus the four thematic rasters the brief
+   names (Fire Prone, FFDR, FCM, FTM). Each is drawn as a per-state
+   graded overlay from the bounding boxes above, so toggling a layer
+   produces a genuine visible change on the globe rather than a dead
+   switch. Real deployments would swap these for the FSI WMS services;
+   the toggle wiring does not change.
+   ═══════════════════════════════════════════════════════════════════ */
+let thematicEnts = [];
+const THEMATIC_STYLE = {
+  admin:    {alpha:0.0,  outline:'#00d4ff', outlineAlpha:0.55},
+  proneMap: {alpha:0.20, ramp:['#1b3b1b','#5f7d24','#c9a227','#e07b2a','#c0392b']},
+  ffdr:     {alpha:0.20, ramp:['#2c7bb6','#abd9e9','#ffffbf','#fdae61','#d7191c']},
+  fcm:      {alpha:0.20, ramp:['#f7fcf5','#c7e9c0','#74c476','#31a354','#006d2c']},
+  ftm:      {alpha:0.20, ramp:['#4a3b2a','#7a6a45','#a8935f','#c9bd8a','#e3dcc0']}
+};
+
+function buildThematicLayers() {
+  ['admin','proneMap','ffdr','fcm','ftm'].forEach(key => {
+    const style = THEMATIC_STYLE[key];
+    STATES.forEach((s, idx) => {
+      // Deterministic per-state class so a layer looks the same every load.
+      const cls = hashCode(s.name + key) % 5;
+      const fill = style.ramp
+        ? Cesium.Color.fromCssColorString(style.ramp[cls]).withAlpha(style.alpha)
+        : Cesium.Color.TRANSPARENT;
+      const outline = Cesium.Color.fromCssColorString(style.outline || style.ramp[cls])
+        .withAlpha(style.outlineAlpha !== undefined ? style.outlineAlpha : 0.35);
+      const e = viewer.entities.add({
+        show:false,
+        rectangle:{
+          coordinates: Cesium.Rectangle.fromDegrees(s.w, s.s, s.e, s.n),
+          material: new Cesium.ColorMaterialProperty(fill),
+          outline: true,
+          outlineColor: new Cesium.ConstantProperty(outline),
+          outlineWidth: key === 'admin' ? 2 : 1,
+          height: 0,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 6e6)
+        }
+      });
+      // Tag AFTER construction. Cesium's Entity constructor merges only
+      // the properties it knows about, so an extra key passed inside the
+      // options object is silently dropped — which would leave
+      // `e._m6Layer` undefined and every thematic toggle dead.
+      e._m6Layer = key;
+      thematicEnts.push(e);
+    });
+  });
+}
+
+function refreshThematicVisibility() {
+  const belowSpace = currentState !== 'SPACE' && currentState !== 'EARTH';
+  thematicEnts.forEach(e => { e.show = belowSpace && !!layers[e._m6Layer]; });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — HOVER INTERACTION
+   Reuses `camera.pickEllipsoid`, exactly the projection the existing
+   click handler uses, so coordinates are derived from the real globe
+   rather than invented.
+   ═══════════════════════════════════════════════════════════════════ */
+let hoverRaf = null, lastHoverEvent = null;
+
+function onGlobeHover(movement) {
+  lastHoverEvent = movement.endPosition;
+  if (hoverRaf) return;                 // coalesce to one update per frame
+  hoverRaf = requestAnimationFrame(() => {
+    hoverRaf = null;
+    handleHover(lastHoverEvent);
+  });
+}
+
+function handleHover(pos) {
+  if (!pos || measureMode) { hideGeoTip(); hideFireTip(); return; }
+  // Never cover a panel the user is reading.
+  if (isOverPanel(pos)) { hideGeoTip(); hideFireTip(); return; }
+
+  // 1) A fire marker under the cursor takes priority.
+  const picked = scene.pick(pos);
+  const pickedId = picked && picked.id;
+  const hit = (typeof pickedId === 'string')
+    ? FIRE_POINTS.find(h => h.id === pickedId) : null;
+
+  if (hit) {
+    showFireTip(hit, pos);
+    hideGeoTip();
+    document.body.style.cursor = 'pointer';
+    return;
+  }
+  hideFireTip();
+  document.body.style.cursor = '';
+
+  // 2) Otherwise report the geography under the cursor.
+  const cart = camera.pickEllipsoid(pos, scene.globe.ellipsoid);
+  if (!cart) { hideGeoTip(); return; }    // cursor is off the globe (space)
+  const cg = Cesium.Cartographic.fromCartesian(cart);
+  showGeoTip(Cesium.Math.toDegrees(cg.latitude), Cesium.Math.toDegrees(cg.longitude), pos);
+}
+
+/* Keep tooltips off the fixed panels. */
+function isOverPanel(pos) {
+  const el = document.elementFromPoint(pos.x, pos.y);
+  if (!el) return false;
+  return !!el.closest('#detail-panel,#alerts-panel,#layer-panel,#filter-panel,#toolbar,#search-wrap,#legend,#stats,#status-bar,#zoom-badge,#breadcrumb,#help-modal');
+}
+
+function showGeoTip(lat, lon, pos) {
+  const tip = document.getElementById('geo-tip');
+  document.getElementById('gt-lat').textContent = Math.abs(lat).toFixed(4) + '° ' + (lat >= 0 ? 'N' : 'S');
+  document.getElementById('gt-lon').textContent = Math.abs(lon).toFixed(4) + '° ' + (lon >= 0 ? 'E' : 'W');
+
+  const st = stateAt(lat, lon);
+  const di = st ? nearestDistrict(lat, lon, 3.0) : null;
+  const place = document.getElementById('gt-place');
+  if (st) {
+    place.innerHTML = '<strong>' + st.name + '</strong>' +
+      '<small>' + (di ? 'Near ' + di.name + ' district' : 'District unresolved') + ' · India</small>';
+  } else {
+    place.innerHTML = '<strong>Outside India</strong><small>No administrative data for this area</small>';
+  }
+  placeTip(tip, pos);
+  tip.classList.add('on');
+}
+function hideGeoTip() { document.getElementById('geo-tip').classList.remove('on'); }
+
+function showFireTip(h, pos) {
+  const tip = document.getElementById('fire-tip');
+  const rc = riskColour(h.risk);
+  tip.innerHTML =
+    '<div class="ft-head"><span class="ft-name">' + esc(h.name) + '</span>' +
+    '<span class="ft-badge" style="background:' + rc + '22;color:' + rc + ';border:1px solid ' + rc + '55">' +
+      riskLabel(h.risk) + '</span></div>' +
+    '<div class="ft-grid">' +
+      ftRow('Fire ID', h.id) +
+      ftRow('Sensor', h.sensor) +
+      ftRow('Acquired', (h.acqTime || '—')) +
+      ftRow('Date', (h.acqDate || '—')) +
+      ftRow('Status', h.status) +
+      ftRow('Latitude', h.lat.toFixed(4) + '°N') +
+      ftRow('Longitude', h.lon.toFixed(4) + '°E') +
+      ftRow('State', h.state) +
+      ftRow('District', h.district) +
+      ftRow('Range', h.range) +
+      ftRow('Beat', h.beat) +
+      ftRow('Area', (h.areaHa != null ? h.areaHa + ' ha' : '—')) +
+      ftRow('FRP', h.frp + ' MW') +
+    '</div>' +
+    '<div class="ft-hint">Click for the full record</div>';
+  placeTip(tip, pos);
+  tip.classList.add('on');
+}
+function hideFireTip() { document.getElementById('fire-tip').classList.remove('on'); }
+function ftRow(k, v) { return '<span class="ft-k">' + k + '</span><span class="ft-v">' + esc(v == null ? '—' : v) + '</span>'; }
+
+/* Position a tooltip near the cursor, flipping before it leaves the
+   viewport so it never gets clipped at an edge. */
+function placeTip(tip, pos) {
+  tip.style.visibility = 'hidden';
+  tip.classList.add('on');
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = pos.x + 18, y = pos.y + 18;
+  if (x + w > window.innerWidth  - 12) x = pos.x - w - 18;
+  if (y + h > window.innerHeight - 12) y = pos.y - h - 18;
+  tip.style.left = Math.max(8, x) + 'px';
+  tip.style.top  = Math.max(8, y) + 'px';
+  tip.style.visibility = '';
+}
+
+function riskColour(r) { return r > 85 ? '#ff2d00' : r > 70 ? '#ff6b35' : r > 55 ? '#ffd700' : '#00d4ff'; }
+function riskLabel(r)  { return r > 85 ? 'CRITICAL' : r > 70 ? 'HIGH' : r > 55 ? 'MODERATE' : 'LOW'; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ── GLOBE CLICK ── */
+function onGlobeClick(evt) {
+  // M6: measurement tool intercepts clicks while armed.
+  if (measureMode) { handleMeasureClick(evt); return; }
+
+  const alt = camera.positionCartographic.height;
+  if (alt > ALT.INDUSTRIAL*3) return;
+
+  // M6: prefer an exact pick on the point primitive before falling back
+  // to the original proximity search.
+  const picked = scene.pick(evt.position);
+  if (picked && typeof picked.id === 'string') {
+    const exact = FIRE_POINTS.find(h => h.id === picked.id);
+    if (exact) { focusDetection(exact); return; }
+  }
+
+  const cart = viewer.camera.pickEllipsoid(evt.position, scene.globe.ellipsoid); if (!cart) return;
+  const cg = Cesium.Cartographic.fromCartesian(cart);
+  const clat = Cesium.Math.toDegrees(cg.latitude), clon = Cesium.Math.toDegrees(cg.longitude);
+  let best=null, bestD=Infinity;
+  const pool = FIRE_POINTS.length ? FIRE_POINTS : DETECTIONS;
+  pool.forEach(h=>{const d=Math.hypot(h.lat-clat,h.lon-clon); if(d<bestD&&d<2.5){bestD=d;best=h;}});
+  if (best) focusDetection(best);
+}
+
+/* M6: single path for "open this detection", used by the globe click,
+   the search results, the alert feed and the nearby list. */
+function focusDetection(h, fly) {
+  openDetail(); renderHotspotDetail(h);
+  if (fly !== false) {
+    camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(h.lon,h.lat,45e3),
+      orientation:{heading:0,pitch:Cesium.Math.toRadians(-58),roll:0},duration:2.2});
+  }
+}
+
+/* ── LAYER TOGGLES ── */
+function toggleLayer(id) {
+  layers[id] = !layers[id];
+  const el = document.getElementById('t-'+id);
+  if (el) el.classList.toggle('on', layers[id]);
+  switch(id) {
+    case 'fire':
+      if(fireCol) fireCol.show=layers.fire;
+      document.getElementById('legend').classList.toggle('on', layers.fire && currentState !== 'SPACE');
+      applyFilters();
+      break;
+    case 'industrial': industrialEnts.forEach(e=>{ e.show=layers.industrial&&camera.positionCartographic.height<ALT.REGIONS; }); break;
+    case 'corridors':  corridorEnts.forEach(e=>{  e.show=layers.corridors&&camera.positionCartographic.height<ALT.SUBCONTINENT; }); break;
+    // M6: sensor and size layers behave as filters on the same point set.
+    case 'modis': case 'viirs': case 'large': applyFilters(); break;
+    // M6: thematic overlays
+    case 'admin': case 'proneMap': case 'ffdr': case 'fcm': case 'ftm':
+      refreshThematicVisibility(); break;
+  }
+  updateLayerCounts();
+  toast((layers[id] ? 'Enabled' : 'Disabled') + ' — ' + layerLabel(id));
+}
+
+function layerLabel(id) {
+  return ({fire:'All Detections', modis:'MODIS', viirs:'VIIRS', large:'Large Forest Fires',
+    admin:'Administrative Boundary', proneMap:'Fire Prone Map', ffdr:'FFDR', fcm:'FCM', ftm:'FTM',
+    industrial:'Industrial Zones', corridors:'Industrial Corridors'})[id] || id;
+}
+
+function updateLayerCounts() {
+  const on = Object.keys(layers).filter(k => layers[k]).length;
+  document.getElementById('lp-active').textContent = on + '/' + Object.keys(layers).length;
+  document.getElementById('c-fire').textContent  = FILTERED.length;
+  document.getElementById('c-modis').textContent = DETECTIONS.filter(d => sensorFamily(d.sensor) === 'MODIS').length;
+  document.getElementById('c-viirs').textContent = DETECTIONS.filter(d => sensorFamily(d.sensor) === 'VIIRS').length;
+  document.getElementById('c-large').textContent = DETECTIONS.filter(d => (d.areaHa || 0) >= LARGE_FIRE_HA).length;
+}
+
+/* ── DETAIL PANEL ── */
+function openDetail() {
+  detailOpen=true;
+  document.getElementById('detail-panel').classList.add('open');
+  renderNearbyHotspots();
+}
+function closeDetail() {
+  detailOpen=false;
+  document.getElementById('detail-panel').classList.remove('open');
+}
+function renderNearbyHotspots() {
+  const pos=camera.positionCartographic;
+  const lat=Cesium.Math.toDegrees(pos.latitude), lon=Cesium.Math.toDegrees(pos.longitude);
+  const pool = FILTERED.length ? FILTERED : (layers.fire ? [] : DETECTIONS);
+  const body = document.getElementById('dp-body');
+
+  if (!pool.length) {
+    // M6: explicit empty state rather than a blank panel.
+    body.innerHTML = emptyState(
+      '🔍', 'No detections match',
+      filtersAreDefault()
+        ? 'The fire layer is switched off. Enable “All Detections” in the Layers panel.'
+        : 'No fire detections satisfy the current filters. Try widening the date range or clearing filters.',
+      filtersAreDefault() ? '' : '<button class="fp-btn warn" onclick="resetFilters()">Reset filters</button>');
+    return;
+  }
+
+  const sorted=pool.map(h=>({...h,d:Math.hypot(h.lat-lat,h.lon-lon)})).sort((a,b)=>a.d-b.d).slice(0,8);
+  body.innerHTML=
+    '<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(0,212,255,.1)">'
+    +'<div style="font-family:var(--font-mono);font-size:.58rem;letter-spacing:1px;text-transform:uppercase;color:rgba(0,212,255,.45);margin-bottom:3px">Nearest hotspots</div>'
+    +'<div style="font-size:.75rem;color:rgba(180,210,235,.5)">'+sorted.length+' of '+pool.length+' fire events in current view</div></div>'
+    +sorted.map(h=>hotspotCard(h)).join('');
+}
+
+/* M6: the full record, organised into the sections the brief specifies. */
+function renderHotspotDetail(h) {
+  const rc = riskColour(h.risk);
+  document.getElementById('dp-body').innerHTML=
+    '<button class="dp-back" onclick="renderNearbyHotspots()">← Back to list</button>'
+    +hotspotCard(h)
+
+    +'<div class="ds-sec"><div class="ds-head">Fire Detection Details</div><div class="ds-body">'
+      +dsRow('Fire Name', h.name)
+      +dsRow('Fire ID', h.id, true)
+      +dsRow('Sensor', h.sensor, true)
+      +dsRow('Acquisition Time', h.acqTime, true)
+      +dsRow('Date', h.acqDate, true)
+      +dsRow('Status', '<span style="color:'+rc+'">'+esc(h.status)+'</span>', false, true)
+      +dsRow('Detection Type', typeLabel(h.type))
+    +'</div></div>'
+
+    +'<div class="ds-sec"><div class="ds-head">Location</div><div class="ds-body">'
+      +dsRow('State', h.state)
+      +dsRow('District', h.district)
+      +dsRow('Circle', h.circle)
+      +dsRow('Division', h.division)
+      +dsRow('Range', h.range)
+      +dsRow('Block', h.block)
+      +dsRow('Beat', h.beat)
+    +'</div></div>'
+
+    +'<div class="ds-sec"><div class="ds-head">Geometry</div><div class="ds-body">'
+      +dsRow('Area', (h.areaHa != null ? h.areaHa + ' ha' : '—'), true)
+      +dsRow('Perimeter', (h.perimeterKm != null ? h.perimeterKm + ' km' : '—'), true)
+      +dsRow('Latitude', h.lat.toFixed(4) + '° N', true)
+      +dsRow('Longitude', h.lon.toFixed(4) + '° E', true)
+    +'</div></div>'
+
+    +'<div class="ds-sec"><div class="ds-head">Thermal Observation</div><div class="ds-body">'
+      +dsRow('Brightness', h.brightness + ' K', true)
+      +dsRow('FRP', h.frp + ' MW', true)
+      +dsRow('Surface Temp', h.temp + ' K', true)
+      +dsRow('Risk Index', h.risk + '%', true)
+    +'</div></div>'
+
+    +'<div class="dp-info-block"><div class="dp-info-lbl">Incident Description</div><div class="dp-info-val">'+esc(h.desc)+'</div></div>'
+
+    +'<div class="ds-actions">'
+      +'<button class="ds-act" onclick="flyToDetection(\''+h.id+'\')">🎯 Zoom to</button>'
+      +'<button class="ds-act" onclick="copyCoords(\''+h.id+'\')">📋 Copy coords</button>'
+      +'<button class="ds-act" onclick="exportOne(\''+h.id+'\')">⬇ Export</button>'
+    +'</div>'
+    +(h.live ? '' : '<div style="margin-top:12px;font-family:var(--font-mono);font-size:.52rem;letter-spacing:.8px;color:rgba(180,210,235,.32);line-height:1.6">Administrative hierarchy and acquisition metadata are representative sample values — see the data-source note in Help.</div>');
+}
+
+function dsRow(k, v, mono, raw) {
+  return '<div class="ds-row"><span class="ds-k">'+k+'</span>'
+       + '<span class="ds-v'+(mono?' mono':'')+'">'+(raw ? v : esc(v == null ? '—' : v))+'</span></div>';
+}
+
+function emptyState(ico, title, desc, extra) {
+  return '<div class="state-box"><div class="state-ico">'+ico+'</div>'
+       + '<div class="state-t">'+esc(title)+'</div>'
+       + '<div class="state-d">'+esc(desc)+'</div>'+(extra||'')+'</div>';
+}
+
+function hotspotCard(h) {
+  const rc=h.risk>85?'#ff2d00':h.risk>70?'#ff6b35':'#ffd700';
+  const rl=h.risk>85?'CRITICAL':h.risk>70?'HIGH':h.risk>55?'MODERATE':'LOW';
+  const mv=(v,lo,hi)=>v>hi?'danger':v>lo?'warning':'ok';
+  return '<div class="hs-card" onclick="openDetectionById(\''+h.id+'\')">'
+    +'<div class="hs-name">'+esc(h.name)+'</div>'
+    +'<div class="hs-type '+h.type+'">'+typeLabel(h.type)+'</div>'
+    +'<div class="hs-metrics">'
+    +'<div class="hs-m"><div class="hs-ml">Brightness</div><div class="hs-mv '+mv(h.brightness,315,335)+'">'+h.brightness+'K</div></div>'
+    +'<div class="hs-m"><div class="hs-ml">FRP (MW)</div><div class="hs-mv '+mv(h.frp,45,70)+'">'+h.frp+'</div></div>'
+    +'<div class="hs-m"><div class="hs-ml">Temp</div><div class="hs-mv '+mv(h.temp,310,330)+'">'+h.temp+'K</div></div>'
+    +'<div class="hs-m"><div class="hs-ml">Risk</div><div class="hs-mv" style="color:'+rc+'">'+h.risk+'%</div></div>'
+    +'</div>'
+    +'<div class="hs-risk"><div class="hs-rl"><span>Risk Level</span><span style="color:'+rc+'">'+rl+'</span></div>'
+    +'<div class="hs-rtrack"><div class="hs-rfill" style="width:'+h.risk+'%"></div></div></div></div>';
+}
+function typeLabel(t){return{coal:'⛏️ COAL MINE',industrial:'🏭 INDUSTRIAL',agri:'🌾 AGRICULTURAL',petroleum:'⛽ PETROLEUM'}[t]||String(t).toUpperCase();}
+
+/* M6: id-based lookup keeps inline handlers free of JSON payloads. */
+function findDetection(id) { return DETECTIONS.find(d => d.id === id); }
+function openDetectionById(id) { const d = findDetection(id); if (d) renderHotspotDetail(d); }
+function flyToDetection(id) {
+  const d = findDetection(id); if (!d) return;
+  camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(d.lon,d.lat,30e3),
+    orientation:{heading:0,pitch:Cesium.Math.toRadians(-60),roll:0},duration:2});
+  setStatus('🎯 Zooming to ' + d.name);
+}
+function copyCoords(id) {
+  const d = findDetection(id); if (!d) return;
+  const txt = d.lat.toFixed(5) + ', ' + d.lon.toFixed(5);
+  navigator.clipboard ? navigator.clipboard.writeText(txt).then(
+      () => toast('Copied ' + txt, 'ok'), () => toast('Clipboard blocked by the browser', 'err'))
+    : toast('Clipboard unavailable', 'err');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — EXPORT
+   ═══════════════════════════════════════════════════════════════════ */
+const CSV_COLUMNS = ['id','name','sensor','acqDate','acqTime','status','type','lat','lon',
+  'state','district','circle','division','range','block','beat',
+  'brightness','frp','temp','risk','areaHa','perimeterKm'];
+
+function toCsv(rows) {
+  const head = CSV_COLUMNS.join(',');
+  const body = rows.map(r => CSV_COLUMNS.map(c => {
+    const v = r[c] == null ? '' : String(r[c]);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }).join(',')).join('\n');
+  return head + '\n' + body;
+}
+
+function downloadCsv(rows, filename) {
+  if (!rows.length) { toast('Nothing to export — no detections match', 'err'); return; }
+  const blob = new Blob([toCsv(rows)], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  toast('Exported ' + rows.length + ' detection' + (rows.length === 1 ? '' : 's'), 'ok');
+}
+
+function exportFiltered() { downloadCsv(FILTERED, 'firesight_detections_' + new Date().toISOString().slice(0,10) + '.csv'); }
+function exportOne(id) { const d = findDetection(id); if (d) downloadCsv([d], 'firesight_' + d.id + '.csv'); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — SEARCH (states, districts, detections)
+   ═══════════════════════════════════════════════════════════════════ */
+let searchSel = -1, searchHits = [];
+
+function runSearch(q) {
+  const term = q.trim().toLowerCase();
+  const box = document.getElementById('search-results');
+  if (!term) { hideSearchResults(); return; }
+
+  const hits = [];
+  DETECTIONS.forEach(d => {
+    if (d.name.toLowerCase().includes(term) || d.id.toLowerCase() === term)
+      hits.push({kind:'fire', label:d.name, meta:d.district + ', ' + d.state + ' · ' + d.id, ref:d});
+  });
+  DISTRICTS.forEach(d => {
+    if (d.name.toLowerCase().includes(term))
+      hits.push({kind:'district', label:d.name, meta:d.state + ' · district HQ', ref:d});
+  });
+  STATES.forEach(s => {
+    if (s.name.toLowerCase().includes(term))
+      hits.push({kind:'state', label:s.name, meta:'Capital: ' + s.cap, ref:s});
+  });
+
+  searchHits = hits.slice(0, 24);
+  searchSel = -1;
+
+  if (!searchHits.length) {
+    box.innerHTML = '<div class="sr-empty">No match for “' + esc(q) + '”.<br>Try a state, district or fire name.</div>';
+    box.classList.add('on');
+    return;
+  }
+  box.innerHTML = searchHits.map((h, i) =>
+    '<div class="sr-item" data-i="' + i + '"><span class="sr-kind">' + h.kind + '</span>' +
+    '<div class="sr-name">' + esc(h.label) + '</div><div class="sr-meta">' + esc(h.meta) + '</div></div>').join('');
+  box.classList.add('on');
+  box.querySelectorAll('.sr-item').forEach(el =>
+    el.addEventListener('click', () => chooseSearchHit(+el.dataset.i)));
+}
+
+function chooseSearchHit(i) {
+  const hit = searchHits[i]; if (!hit) return;
+  hideSearchResults();
+  document.getElementById('search-input').value = hit.label;
+
+  if (hit.kind === 'fire') {
+    focusDetection(hit.ref);
+    setStatus('🔥 ' + hit.ref.name + ' — ' + hit.ref.district + ', ' + hit.ref.state);
+  } else if (hit.kind === 'district') {
+    flyToPoint(hit.ref.lon, hit.ref.lat, 120e3);
+    setStatus('📍 ' + hit.ref.name + ' district, ' + hit.ref.state);
+    // Scope the filters to the chosen district so the view and the data agree.
+    FILTERS.state = hit.ref.state; FILTERS.district = hit.ref.name;
+    syncFilterControls(); applyFilters();
+    toast('Filtered to ' + hit.ref.name + ' district');
+  } else {
+    const s = hit.ref;
+    flyToRect(s.w, s.s, s.e, s.n);
+    setStatus('🗺️ ' + s.name + ' — capital ' + s.cap);
+    FILTERS.state = s.name; FILTERS.district = '';
+    syncFilterControls(); applyFilters();
+    toast('Filtered to ' + s.name);
+  }
+}
+
+function hideSearchResults() { document.getElementById('search-results').classList.remove('on'); searchSel = -1; }
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  hideSearchResults();
+  document.getElementById('search-input').focus();
+}
+
+/* Camera helpers reused by search, filters and the toolbar. */
+function flyToPoint(lon, lat, height) {
+  camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(lon, lat, height || 150e3),
+    orientation:{heading:0, pitch:Cesium.Math.toRadians(-62), roll:0}, duration:2.4,
+    easingFunction:Cesium.EasingFunction.QUADRATIC_OUT});
+}
+function flyToRect(w, s, e, n) {
+  camera.flyTo({destination:Cesium.Rectangle.fromDegrees(w - .4, s - .4, e + .4, n + .4), duration:2.4});
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — FILTER CONTROLS
+   ═══════════════════════════════════════════════════════════════════ */
+/* Split in two on purpose. Wiring must happen exactly once — the data
+   is reloaded when the live API answers, and re-running the wiring
+   would stack a second copy of every listener (so one slider drag would
+   re-filter twice) and append a duplicate set of <option> elements to
+   the state dropdown. */
+let filterControlsWired = false;
+
+function buildFilterControls() {
+  populateFilterOptions();
+  if (filterControlsWired) return;
+  filterControlsWired = true;
+  wireFilterControls();
+}
+
+/* Safe to call whenever DETECTIONS changes. */
+function populateFilterOptions() {
+  chipGroup('f-sensor', ['MODIS','VIIRS'], FILTERS.sensors);
+  chipGroup('f-type', ['coal','industrial','agri','petroleum'], FILTERS.types,
+            t => typeLabel(t).replace(/^\S+\s/, ''));
+  chipGroup('f-status', STATUSES, FILTERS.statuses);
+
+  const stateSel = document.getElementById('f-state');
+  const previous = stateSel.value;
+  stateSel.innerHTML = '<option value="">All states</option>';
+  [...new Set(DETECTIONS.map(d => d.state))].filter(Boolean).sort()
+    .forEach(s => stateSel.add(new Option(s, s)));
+  stateSel.value = previous;          // keep the operator's selection
+  rebuildDistrictOptions();
+}
+
+function wireFilterControls() {
+  const stateSel = document.getElementById('f-state');
+  stateSel.addEventListener('change', () => {
+    FILTERS.state = stateSel.value; FILTERS.district = '';
+    rebuildDistrictOptions(); applyFilters();
+  });
+  document.getElementById('f-district').addEventListener('change', e => {
+    FILTERS.district = e.target.value; applyFilters();
+  });
+  ['f-from','f-to'].forEach(id => document.getElementById(id).addEventListener('change', e => {
+    FILTERS[id === 'f-from' ? 'from' : 'to'] = e.target.value; applyFilters();
+  }));
+  const risk = document.getElementById('f-risk');
+  risk.addEventListener('input', e => {
+    FILTERS.minRisk = +e.target.value;
+    document.getElementById('f-risk-v').textContent = e.target.value + '%';
+    applyFilters();
+  });
+  const size = document.getElementById('f-size');
+  size.addEventListener('input', e => {
+    FILTERS.minSize = +e.target.value;
+    document.getElementById('f-size-v').textContent = e.target.value;
+    applyFilters();
+  });
+  document.getElementById('f-reset').addEventListener('click', resetFilters);
+  document.getElementById('f-apply').addEventListener('click', zoomToResults);
+}
+
+function chipGroup(hostId, values, targetSet, labelFn) {
+  const host = document.getElementById(hostId);
+  host.innerHTML = '';
+  values.forEach(v => {
+    const chip = document.createElement('div');
+    chip.className = 'fp-chip';
+    chip.textContent = labelFn ? labelFn(v) : v;
+    chip.dataset.v = v;
+    chip.addEventListener('click', () => {
+      targetSet.has(v) ? targetSet.delete(v) : targetSet.add(v);
+      chip.classList.toggle('on', targetSet.has(v));
+      applyFilters();
+    });
+    host.appendChild(chip);
+  });
+}
+
+function rebuildDistrictOptions() {
+  const sel = document.getElementById('f-district');
+  sel.innerHTML = '<option value="">All districts</option>';
+  const pool = DETECTIONS.filter(d => !FILTERS.state || d.state === FILTERS.state);
+  [...new Set(pool.map(d => d.district))].filter(d => d && d !== '—').sort()
+    .forEach(d => sel.add(new Option(d, d)));
+  sel.value = FILTERS.district || '';
+}
+
+/* Push FILTERS back into the DOM controls — used after search sets them. */
+function syncFilterControls() {
+  document.getElementById('f-state').value = FILTERS.state || '';
+  rebuildDistrictOptions();
+  document.getElementById('f-from').value = FILTERS.from || '';
+  document.getElementById('f-to').value = FILTERS.to || '';
+  document.getElementById('f-risk').value = FILTERS.minRisk;
+  document.getElementById('f-risk-v').textContent = FILTERS.minRisk + '%';
+  document.getElementById('f-size').value = FILTERS.minSize;
+  document.getElementById('f-size-v').textContent = FILTERS.minSize;
+  ['f-sensor','f-type','f-status'].forEach(id =>
+    document.querySelectorAll('#' + id + ' .fp-chip').forEach(c => {
+      const set = id === 'f-sensor' ? FILTERS.sensors : id === 'f-type' ? FILTERS.types : FILTERS.statuses;
+      c.classList.toggle('on', set.has(c.dataset.v));
+    }));
+}
+
+function resetFilters() {
+  FILTERS.from = FILTERS.to = ''; FILTERS.state = FILTERS.district = '';
+  FILTERS.minRisk = FILTERS.minSize = 0;
+  FILTERS.sensors.clear(); FILTERS.types.clear(); FILTERS.statuses.clear();
+  syncFilterControls(); applyFilters();
+  toast('Filters reset', 'ok');
+}
+
+/* Frame the camera on whatever currently passes the filters. */
+function zoomToResults() {
+  if (!FILTERED.length) { toast('No results to zoom to', 'err'); return; }
+  const lats = FILTERED.map(d => d.lat), lons = FILTERED.map(d => d.lon);
+  const w = Math.min(...lons), e = Math.max(...lons);
+  const s = Math.min(...lats), n = Math.max(...lats);
+  (w === e && s === n) ? flyToPoint(w, s, 90e3) : flyToRect(w, s, e, n);
+  setStatus('🔍 Framing ' + FILTERED.length + ' filtered detection' + (FILTERED.length === 1 ? '' : 's'));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — STATISTICS
+   ═══════════════════════════════════════════════════════════════════ */
+function updateStats() {
+  const f = FILTERED;
+  document.getElementById('s-total').textContent  = f.length;
+  document.getElementById('s-crit').textContent   = f.filter(d => d.risk > 85).length;
+  document.getElementById('s-high').textContent   = f.filter(d => d.risk > 70 && d.risk <= 85).length;
+  document.getElementById('s-frp').textContent    = Math.round(f.reduce((a, d) => a + (d.frp || 0), 0));
+  document.getElementById('s-area').textContent   = Math.round(f.reduce((a, d) => a + (d.areaHa || 0), 0));
+  document.getElementById('s-states').textContent = new Set(f.map(d => d.state)).size;
+  document.getElementById('fp-match').textContent = f.length + '/' + DETECTIONS.length;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — ALERTS
+   Derived from the detections themselves so the feed always agrees
+   with what is on the globe. Replaced by the gateway's /dashboard/alerts
+   when the backend is reachable.
+   ═══════════════════════════════════════════════════════════════════ */
+let ALERTS = [];
+
+function buildAlerts() {
+  ALERTS = DETECTIONS.filter(d => d.risk >= 70)
+    .sort((a, b) => b.risk - a.risk)
+    .slice(0, 18)
+    .map(d => ({
+      id:d.id, name:d.name,
+      severity: d.risk > 85 ? 'CRITICAL' : 'HIGH',
+      time: d.acqTime || '—',
+      msg: (d.risk > 85 ? 'Sustained critical thermal anomaly' : 'Elevated fire radiative power')
+           + ' at ' + d.district + ', ' + d.state + ' — ' + d.frp + ' MW.'
+    }));
+}
+
+function renderAlerts() {
+  const body = document.getElementById('al-body');
+  if (!ALERTS.length) {
+    body.innerHTML = emptyState('✅', 'No active alerts', 'No detection currently exceeds the alert threshold.');
+    return;
+  }
+  body.innerHTML =
+    '<div style="margin-bottom:12px;font-family:var(--font-mono);font-size:.58rem;letter-spacing:1px;color:rgba(0,212,255,.45);text-transform:uppercase">'
+    + ALERTS.length + ' active alerts</div>'
+    + ALERTS.map(a => {
+      const c = a.severity === 'CRITICAL' ? '#ff2d00' : '#ff6b35';
+      return '<div class="al-item" onclick="openDetectionById(\'' + a.id + '\');toggleAlerts(false)">'
+        + '<div class="al-top"><span class="al-sev" style="background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55">'
+        + a.severity + '</span><span class="al-time">' + esc(a.time) + '</span></div>'
+        + '<div class="al-name">' + esc(a.name) + '</div>'
+        + '<div class="al-msg">' + esc(a.msg) + '</div></div>';
+    }).join('');
+}
+
+function toggleAlerts(force) {
+  const el = document.getElementById('alerts-panel');
+  const open = force === undefined ? !el.classList.contains('open') : force;
+  el.classList.toggle('open', open);
+  document.getElementById('tb-alerts').classList.toggle('active', open);
+  if (open) { renderAlerts(); closeDetail(); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — MEASUREMENT TOOL
+   ═══════════════════════════════════════════════════════════════════ */
+let measureMode = false, measurePts = [], measureEnts = [];
+
+function toggleMeasure(force) {
+  measureMode = force === undefined ? !measureMode : force;
+  document.getElementById('tb-measure').classList.toggle('active', measureMode);
+  document.body.style.cursor = measureMode ? 'crosshair' : '';
+  if (!measureMode) clearMeasure();
+  else { hideGeoTip(); hideFireTip(); toast('Measure: click two points on the globe'); }
+}
+
+function clearMeasure() {
+  measureEnts.forEach(e => viewer.entities.remove(e));
+  measureEnts = []; measurePts = [];
+}
+
+function handleMeasureClick(evt) {
+  const cart = camera.pickEllipsoid(evt.position, scene.globe.ellipsoid);
+  if (!cart) { toast('Click on the globe surface', 'err'); return; }
+  const cg = Cesium.Cartographic.fromCartesian(cart);
+  const lat = Cesium.Math.toDegrees(cg.latitude), lon = Cesium.Math.toDegrees(cg.longitude);
+
+  if (measurePts.length === 2) clearMeasure();
+  measurePts.push({lat, lon});
+
+  measureEnts.push(viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(lon, lat, 200),
+    point:{pixelSize:9, color:Cesium.Color.fromCssColorString('#00d4ff'),
+           outlineColor:Cesium.Color.WHITE, outlineWidth:2}
+  }));
+
+  if (measurePts.length === 2) {
+    const [a, b] = measurePts;
+    const km = haversineKm(a.lat, a.lon, b.lat, b.lon);
+    measureEnts.push(viewer.entities.add({
+      polyline:{
+        positions:Cesium.Cartesian3.fromDegreesArray([a.lon, a.lat, b.lon, b.lat]),
+        width:2, material:new Cesium.PolylineDashMaterialProperty({color:Cesium.Color.fromCssColorString('#00d4ff')})
+      },
+      position:Cesium.Cartesian3.fromDegrees((a.lon + b.lon) / 2, (a.lat + b.lat) / 2, 400),
+      label:{text:km.toFixed(2) + ' km', font:'12px "Space Mono",monospace',
+             fillColor:Cesium.Color.WHITE, outlineColor:Cesium.Color.BLACK, outlineWidth:3,
+             style:Cesium.LabelStyle.FILL_AND_OUTLINE, pixelOffset:new Cesium.Cartesian2(0, -14)}
+    }));
+    setStatus('📏 Distance: ' + km.toFixed(2) + ' km');
+    toast('Distance ' + km.toFixed(2) + ' km — click again to measure anew', 'ok');
+  }
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371, rad = d => d * Math.PI / 180;
+  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — TOOLBAR ACTIONS
+   ═══════════════════════════════════════════════════════════════════ */
+function zoomStep(factor) {
+  const h = camera.positionCartographic.height;
+  const target = Math.min(Math.max(h * factor, 2500), 25e6);
+  camera.zoomIn(h - target);      // negative amount zooms out
+}
+
+function goHome() {
+  toggleMeasure(false);
+  flyToRect(INDIA.west, INDIA.south, INDIA.east, INDIA.north);
+  setStatus('🏠 Returned to the full India view');
+}
+
+function resetEverything() {
+  toggleMeasure(false);
+  closeDetail(); toggleAlerts(false); hideSearchResults();
+  document.getElementById('search-input').value = '';
+  Object.assign(layers, {fire:true, industrial:true, corridors:true, admin:false,
+    modis:true, viirs:true, large:false, proneMap:false, ffdr:false, fcm:false, ftm:false});
+  Object.keys(layers).forEach(k => {
+    const el = document.getElementById('t-' + k);
+    if (el) el.classList.toggle('on', layers[k]);
+  });
+  refreshThematicVisibility();
+  industrialEnts.forEach(e => e.show = layers.industrial && camera.positionCartographic.height < ALT.REGIONS);
+  corridorEnts.forEach(e => e.show = layers.corridors && camera.positionCartographic.height < ALT.SUBCONTINENT);
+  FILTERS.from = FILTERS.to = ''; FILTERS.state = FILTERS.district = '';
+  FILTERS.minRisk = FILTERS.minSize = 0;
+  FILTERS.sensors.clear(); FILTERS.types.clear(); FILTERS.statuses.clear();
+  syncFilterControls(); applyFilters();
+  goHome();
+  toast('View, layers and filters reset', 'ok');
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    (document.documentElement.requestFullscreen
+      ? document.documentElement.requestFullscreen()
+      : Promise.reject(new Error('unsupported')))
+      .then(() => toast('Fullscreen on'))
+      .catch(() => toast('Fullscreen blocked by the browser', 'err'));
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+function togglePanel(panelId, btnId) {
+  const p = document.getElementById(panelId);
+  const on = p.classList.toggle('on');
+  document.getElementById(btnId).classList.toggle('active', on);
+  return on;
+}
+
+function toggleHelp(force) {
+  const m = document.getElementById('help-modal');
+  const on = force === undefined ? !m.classList.contains('on') : force;
+  m.classList.toggle('on', on);
+  document.getElementById('tb-help').classList.toggle('active', on);
+}
+
+/* ── HUD ── */
+function updateHUD(alt,lat,lon) {
+  const km=alt/1000;
+  let s;
+  if(km>1000) s=(km/1000).toFixed(1)+'<span> Mm</span>';
+  else if(km>100) s=km.toFixed(0)+'<span> km</span>';
+  else s=km.toFixed(1)+'<span> km</span>';
+  document.getElementById('zb-alt').innerHTML=s;
+  document.getElementById('zb-coord').textContent=lat.toFixed(2)+'°N, '+lon.toFixed(2)+'°E';
+  document.getElementById('status-coord').textContent=lat.toFixed(3)+'° N  '+lon.toFixed(3)+'° E';
+  const labels={SPACE:'SPACE VIEW',EARTH:'ORBITAL VIEW',SUBCONTINENT:'SUBCONTINENT',INDIA:'INDIA VIEW',REGIONS:'REGIONAL',INDUSTRIAL:'INDUSTRIAL ZONES',DETAIL:'DETAIL VIEW'};
+  document.getElementById('zb-state').textContent=labels[currentState]||currentState;
+}
+
+function bc(level, sub) {
+  ['bc0','bc1','bc2'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    el.className='bc-item'+(i<level?' visited':'')+(i===level?' current':'');
+  });
+  const s3=document.getElementById('bcs3'), b3=document.getElementById('bc3');
+  if(sub){s3.style.display='';b3.style.display='';b3.textContent=sub;b3.className='bc-item current';}
+  else{s3.style.display='none';b3.style.display='none';}
+}
+
+function updateZoomProgress(state) {
+  const idx=STATES_ORDER.indexOf(state);
+  const pct=(idx/(STATES_ORDER.length-1))*100;
+  document.getElementById('zp-fill').style.height=pct+'%';
+  document.getElementById('zp-dot').style.bottom=pct+'%';
+  document.querySelectorAll('.zp-lbl').forEach(el=>el.classList.toggle('active',el.dataset.s===state));
+}
+
+function setStatus(txt){document.getElementById('status-txt').textContent=txt;}
+function showFlash(){const el=document.getElementById('flash');el.classList.add('pop');setTimeout(()=>el.classList.remove('pop'),600);}
+function flashState(txt){const el=document.getElementById('state-flash');el.textContent=txt;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2000);}
+
+/* M6: lightweight toast for action feedback. */
+let toastTimer = null;
+function toast(msg, kind) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'on' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = kind ? kind : ''; }, 2600);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — LIVE UPDATES (WebSocket, with graceful degradation)
+   ═══════════════════════════════════════════════════════════════════ */
+let ws = null;
+
+function setConnection(mode, label) {
+  const pill = document.getElementById('conn-pill');
+  pill.className = mode;                     // '', 'live' or 'demo'
+  document.getElementById('conn-txt').textContent = label;
+}
+
+function connectLiveUpdates() {
+  if (!API.online) return;
+  try {
+    const url = (API.base || location.origin).replace(/^http/, 'ws') + '/ws/live-updates';
+    ws = new WebSocket(url);
+    ws.onopen = () => setConnection('live', 'Live');
+    ws.onmessage = ev => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'cluster_update') { refreshFromApi(); toast('Live update received'); }
+      } catch { /* ignore malformed frames */ }
+    };
+    ws.onclose = () => setConnection('demo', 'Offline');
+    ws.onerror  = () => { try { ws.close(); } catch {} };
+  } catch { setConnection('demo', 'Offline'); }
+}
+
+async function refreshFromApi() {
+  try {
+    const live = await API.fetchDetections();
+    if (live.length) {
+      DETECTIONS = enrichDetections(live);
+      buildAlerts(); applyFilters();
+      if (document.getElementById('alerts-panel').classList.contains('open')) renderAlerts();
+    }
+  } catch (e) { console.warn('[FireSight] live refresh failed:', e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEMBER 6 — BOOTSTRAP OF THE PORTAL LAYER
+   ═══════════════════════════════════════════════════════════════════ */
+async function initPortal() {
+  // Start from the bundled records so the UI is never empty, then
+  // upgrade to live data if the gateway answers.
+  DETECTIONS = enrichDetections(HOTSPOTS);
+  buildFilterControls();
+  buildAlerts();
+  applyFilters();
+
+  setConnection('', 'Connecting…');
+  const online = await API.ping();
+  if (online) {
+    try {
+      const live = await API.fetchDetections();
+      if (live.length) {
+        DETECTIONS = enrichDetections(live);
+        buildFilterControls();               // repopulate state/district options
+        buildAlerts(); applyFilters();
+      }
+      setConnection('live', 'Live API');
+      document.getElementById('hm-src').textContent =
+        'Connected to the FireSight gateway at ' + (API.base || location.origin) +
+        '. Detections come from the FIRMS ingestion pipeline.';
+      connectLiveUpdates();
+    } catch (e) {
+      setConnection('demo', 'Sample data');
+      document.getElementById('hm-src').textContent =
+        'Gateway reachable but /dashboard/detections failed (' + e.message + '). Showing bundled sample records.';
+    }
+  } else {
+    setConnection('demo', 'Sample data');
+    document.getElementById('hm-src').textContent =
+      'Backend gateway not reachable. Showing ' + DETECTIONS.length +
+      ' bundled sample detections — thermal values are real reference figures; ' +
+      'acquisition metadata and the forest administrative hierarchy are representative samples.';
+  }
+  wirePortalControls();
+}
+
+/* Every control gets a real handler — no decorative buttons. */
+function wirePortalControls() {
+  document.getElementById('tb-zoomin').addEventListener('click',  () => zoomStep(0.55));
+  document.getElementById('tb-zoomout').addEventListener('click', () => zoomStep(1.8));
+  document.getElementById('tb-home').addEventListener('click',    goHome);
+  document.getElementById('tb-reset').addEventListener('click',   resetEverything);
+  document.getElementById('tb-layers').addEventListener('click',  () => {
+    const p = document.getElementById('layer-panel');
+    const on = p.classList.toggle('on');
+    document.getElementById('tb-layers').classList.toggle('active', on);
+  });
+  document.getElementById('tb-filters').addEventListener('click', () => togglePanel('filter-panel','tb-filters'));
+  document.getElementById('tb-alerts').addEventListener('click',  () => toggleAlerts());
+  document.getElementById('tb-measure').addEventListener('click', () => toggleMeasure());
+  document.getElementById('tb-export').addEventListener('click',  exportFiltered);
+  document.getElementById('tb-full').addEventListener('click',    toggleFullscreen);
+  document.getElementById('tb-help').addEventListener('click',    () => toggleHelp());
+
+  const si = document.getElementById('search-input');
+  si.addEventListener('input', e => runSearch(e.target.value));
+  si.addEventListener('keydown', e => {
+    const box = document.getElementById('search-results');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!searchHits.length) return;
+      searchSel = (searchSel + (e.key === 'ArrowDown' ? 1 : -1) + searchHits.length) % searchHits.length;
+      box.querySelectorAll('.sr-item').forEach((el, i) => el.classList.toggle('sel', i === searchSel));
+    } else if (e.key === 'Enter') {
+      chooseSearchHit(searchSel >= 0 ? searchSel : 0);
+    } else if (e.key === 'Escape') { hideSearchResults(); si.blur(); }
+  });
+  document.getElementById('search-clear').addEventListener('click', clearSearch);
+
+  document.getElementById('help-modal').addEventListener('click', e => {
+    if (e.target.id === 'help-modal') toggleHelp(false);
+  });
+
+  // Keyboard shortcuts — skipped while typing in the search box.
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    switch (e.key.toLowerCase()) {
+      case '/': e.preventDefault(); document.getElementById('search-input').focus(); break;
+      case 'l': document.getElementById('tb-layers').click(); break;
+      case 'f': document.getElementById('tb-filters').click(); break;
+      case 'a': toggleAlerts(); break;
+      case 'h': goHome(); break;
+      case 'r': resetEverything(); break;
+      case 'm': toggleMeasure(); break;
+      case '?': toggleHelp(); break;
+      case '+': case '=': zoomStep(0.55); break;
+      case '-': zoomStep(1.8); break;
+      case 'escape':
+        toggleHelp(false); toggleAlerts(false); closeDetail();
+        hideSearchResults(); toggleMeasure(false); break;
+    }
+  });
+
+  // Hide cursor tooltips when the pointer leaves the canvas entirely.
+  document.getElementById('cesiumContainer').addEventListener('mouseleave', () => {
+    hideGeoTip(); hideFireTip();
+  });
+  window.addEventListener('blur', () => { hideGeoTip(); hideFireTip(); });
+}
+
+/* ── BOOT ── */
+document.getElementById('btn-descend').addEventListener('click', beginDescent);
+document.getElementById('btn-skip').addEventListener('click', skipIntro);
+window.addEventListener('load', () => {
+  try {
+    initGlobe();
+    // initPortal is async; without a catch a failure inside it would
+    // surface only as an unhandled rejection in the console and the
+    // operator would see a half-built UI with no explanation.
+    initPortal().catch(err => {
+      console.error('[FireSight] portal init failed:', err);
+      setConnection('demo', 'Sample data');
+      toast('Dashboard started in offline mode', 'err');
+    });
+  }
+  catch(err) {
+    console.error('[FireSight] init failed:', err);
+    document.getElementById('loading').innerHTML=
+      '<div style="text-align:center;padding:40px;color:#ff6b35">'
+      +'<div style="font-size:48px;margin-bottom:16px">⚠️</div>'
+      +'<div style="font-family:\'Space Mono\',monospace;letter-spacing:2px;font-size:.8rem">INITIALIZATION FAILED</div>'
+      +'<div style="margin-top:10px;font-size:.75rem;color:rgba(255,255,255,.4)">'+err.message+'</div>'
+      +'<div style="margin-top:14px;font-size:.75rem;color:rgba(255,255,255,.4)">Serve via HTTP server: python3 -m http.server 8080</div></div>';
+  }
+});
+</script>
+</body>
+</html>
