@@ -19,6 +19,7 @@ COPY imagery ./imagery
 COPY temporal ./temporal
 COPY gateway ./gateway
 COPY static ./static
+COPY scripts ./scripts
 COPY alembic.ini .
 
 EXPOSE 8000
