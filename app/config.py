@@ -7,6 +7,8 @@ external-service surface is visible in one place.
 from functools import lru_cache
 from typing import List
 
+from pydantic import model_validator
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +25,30 @@ class Settings(BaseSettings):
     # who read this file could forge a session with it.
     auth_secret_key: str = "dev-insecure-change-me"
     auth_token_ttl_hours: int = 24 * 7
+
+    # CORS — comma-separated list of allowed origins.
+    # Defaults to "*" for local dev. In production, set CORS_ORIGINS to
+    # your actual frontend origin(s), e.g. "https://firesight.example.com".
+    cors_origins: str = "*"
+
+    @model_validator(mode="after")
+    def _reject_insecure_defaults_in_prod(self) -> "Settings":
+        """Crash at startup if the default dev secret key is used in a
+        non-local environment. Detects production by checking whether the
+        DATABASE_URL points to localhost/127.0.0.1 — if it doesn't, we
+        are almost certainly running on a real server and the default key
+        would be a critical security hole.
+        """
+        _LOCAL = ("localhost", "127.0.0.1", "db")  # 'db' = docker-compose service name
+        is_local_db = any(h in self.database_url for h in _LOCAL)
+        if not is_local_db and self.auth_secret_key == "dev-insecure-change-me":
+            raise ValueError(
+                "AUTH_SECRET_KEY is still the insecure development default. "
+                "Set a strong secret via the AUTH_SECRET_KEY environment variable "
+                "before deploying. Generate one with: "
+                "python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return self
 
     # FIRMS
     firms_map_key: str = ""
@@ -97,6 +123,13 @@ class Settings(BaseSettings):
     # Used to build the "view this fire on the dashboard" link in the SMS
     # body — no deep-link/permalink mechanism existed before this feature.
     frontend_base_url: str = "http://localhost:8000"
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parsed list of allowed CORS origins from the CORS_ORIGINS env var."""
+        if self.cors_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def firms_source_list(self) -> List[str]:

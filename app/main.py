@@ -37,15 +37,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import routes_clusters, routes_facilities, routes_hotspots
 from app.auth.routes import router as auth_router
+from app.config import get_settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SIH162 FireSight Platform API", version="0.6.0")
 
+# Allowed origins are driven by the CORS_ORIGINS env var (see app/config.py).
+# Defaults to ["*"] for local dev; set CORS_ORIGINS in production, e.g.:
+#   CORS_ORIGINS=https://firesight.example.com,https://app.example.com
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to the dashboard's origin before any real deployment
+    allow_origins=get_settings().cors_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
