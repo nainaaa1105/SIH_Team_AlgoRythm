@@ -448,11 +448,13 @@ def test_every_wui_eta_display_site_uses_the_shared_formatter(html):
     pattern would keep showing '0.3 h' for a 20-minute threat instead of
     going through fmtWuiEta()."""
     assert "wuiEtaHours.toFixed(1)" not in html
-    # +1 for the function's own declaration/definition. The detail panel
-    # and dispatch report call sites went with the removed WUI Ember-Jump
-    # Assessment card (see test_wui_ember_jump_assessment_card_removed_
-    # from_the_detail_panel) — warning tooltip and summary list remain.
-    assert html.count("fmtWuiEta(") == 3
+    # +1 for the function's own declaration/definition. Warning tooltip
+    # and summary list are the original two call sites; the detail
+    # panel gained its own again with the dedicated WUI threat banner
+    # (see test_wui_banner_shows_the_threatened_asset_and_eta) — a
+    # different, simpler element than the removed WUI Ember-Jump
+    # Assessment card, not a revival of it.
+    assert html.count("fmtWuiEta(") == 4
 
 
 def test_crown_fire_frp_marker_and_summary_badges_exist(html):
@@ -546,6 +548,41 @@ def test_crown_fire_frp_row_is_highlighted_in_the_detail_panel(html):
     open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
     assert "isCrownFire" in open_dp
     assert "CROWN FIRE THRESHOLD EXCEEDED" in open_dp
+
+
+def test_wui_and_crown_get_their_own_dedicated_banner_not_crammed_into_frp(html):
+    """Bug report: the crown-fire badge was rendered inline inside the
+    FRP row's own value cell (a <br> + span appended to the number), and
+    WUI threat had no place in the detail panel at all -- it only showed
+    in the sidebar's separate WUI Threats list. Both now get their own
+    full-width row at the top of the panel, rendered only when they
+    actually apply, so a fire with neither shows no banner at all."""
+    open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
+    assert "dp-threat-row" in open_dp
+    assert "fire.wuiThreat" in open_dp
+    assert "fire.isCrownFire" in open_dp
+    # The old broken placement -- inline inside the FRP value -- must be
+    # gone, not left duplicated alongside the new banner.
+    assert "crown-tag" not in open_dp
+    frp_row = open_dp.split("FRP (MW)")[1].split("</div></div>")[0]
+    assert "CROWN FIRE THRESHOLD EXCEEDED" not in frp_row
+
+
+def test_threat_banners_render_before_the_ordinary_rows(html):
+    """Safety-critical info first -- the banners must be prepended to
+    dp-body's innerHTML, not appended after LOCATION/STATUS/etc."""
+    open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
+    banner_idx = open_dp.index("threatBanners +")
+    location_idx = open_dp.index(">LOCATION<")
+    assert banner_idx < location_idx
+
+
+def test_wui_banner_shows_the_threatened_asset_and_eta(html):
+    open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
+    assert "fire.wuiThreatenedAsset" in open_dp
+    # Through the shared fmtWuiEta() formatter, not a raw .toFixed(1) --
+    # see test_every_wui_eta_display_site_uses_the_shared_formatter.
+    assert "fmtWuiEta(fire.wuiEtaHours)" in open_dp
 
 
 def test_wui_and_crown_checkboxes_show_a_count_like_every_other_type_row(html):

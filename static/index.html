@@ -1998,11 +1998,17 @@
       text-align: right; margin-top: 3px;
     }
     .dp-v.crown-hot { color: #1565c0 !important }
-    .crown-tag {
-      display: inline-block; margin-top: 4px; padding: 2px 7px;
-      background: #1565c0; color: #fff; font-family: var(--mono);
-      font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
+    /* Dedicated threat banner at the top of the detail panel — WUI and
+       crown-fire each get their own full-width row here instead of
+       either being crammed inline into the FRP row. Both can render at
+       once, stacked, since a cluster can be flagged for both. */
+    .dp-threat-row {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 10px; margin-bottom: 6px;
+      background: #1565c0; color: #fff; border-radius: 3px;
+      font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .2px;
     }
+    .dp-threat-row .dp-threat-icon { font-size: 14px; flex: none }
     .wui-glowing-spot.crown-glow { animation-name: crown-pulse }
     @keyframes crown-pulse {
       0%   { filter: drop-shadow(0 0 2px #1565c0) drop-shadow(0 0 2px #1565c0); }
@@ -2164,6 +2170,30 @@
         top: calc(var(--hh) + 6px);
         font-size: 11px;
         padding: 8px 12px
+      }
+
+      /* .lp-login is a fixed 420px + a 12vw desktop-only offset (to sit
+         beside the intro globe) -- on a phone that's wider than the
+         viewport itself, so login/signup (both use this class) were
+         unusable rather than just cramped. Shrinks to fit and lets
+         #login-screen's own flex centering position it, instead of the
+         desktop offset pushing part of it off-screen. */
+      .lp-login {
+        width: min(420px, 88vw);
+        margin-left: auto;
+        margin-right: auto;
+        padding: 20px 18px 16px;
+      }
+
+      /* Uppercase + 5px letter-spacing on a 35-character line is wider
+         than most phones regardless of font-size tweaks alone -- cut
+         both down so the tagline fits instead of clipping off both
+         edges. */
+      .th-tagline {
+        font-size: 10px;
+        letter-spacing: 2px;
+        width: 90vw;
+        text-align: center;
       }
     }
 
@@ -3960,7 +3990,22 @@
         ? '<span style="color:' + PERSISTENCE_COLOR[fire.sourceClass] + '">' + PERSISTENCE_LABEL[fire.sourceClass] + '</span>'
         : NA;
 
+      // One dedicated banner per active threat, stacked at the top of the
+      // panel — not crammed inline into the FRP row. A cluster can be
+      // flagged WUI, crown-fire, both, or neither; each gets its own
+      // full-width row only when it actually applies.
+      const threatBanners =
+        (fire.wuiThreat
+          ? '<div class="dp-threat-row"><span class="dp-threat-icon">&#x1F6A8;</span>WUI THREAT — ' +
+            (fire.wuiThreatenedAsset || 'nearby settlement') +
+            (fire.wuiEtaHours != null ? ' (ETA ' + fmtWuiEta(fire.wuiEtaHours) + ')' : '') + '</div>'
+          : '') +
+        (fire.isCrownFire
+          ? '<div class="dp-threat-row"><span class="dp-threat-icon">&#x1F525;</span>CROWN FIRE THRESHOLD EXCEEDED</div>'
+          : '');
+
       document.getElementById('dp-body').innerHTML =
+        threatBanners +
         '<div class="dp-row"><div class="dp-k">LOCATION</div><div class="dp-v hi" id="dp-location">' + place + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">LAT / LON</div><div class="dp-v">' + fire.lat.toFixed(4) + 'N<br>' + fire.lon.toFixed(4) + 'E</div></div>' +
         '<div class="dp-row"><div class="dp-k">DETECTED</div><div class="dp-v">' + when + '</div></div>' +
@@ -3968,8 +4013,7 @@
         '<div class="dp-row"><div class="dp-k">SENSOR</div><div class="dp-v hi">' + (fire.sensorProduct || fire.sensor || '--') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">DETECTIONS</div><div class="dp-v">' + (fire.nDetections != null ? fire.nDetections : '--') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">FRP (MW)</div><div class="dp-v hi' + (fire.isCrownFire ? ' crown-hot' : '') +
-          '" style="color:' + (fire.isCrownFire ? '#1565c0' : info.color) + '">' + fmt(fire.frp, 1) +
-          (fire.isCrownFire ? '<br><span class="crown-tag">&#x1F525; CROWN FIRE THRESHOLD EXCEEDED</span>' : '') + '</div></div>' +
+          '" style="color:' + (fire.isCrownFire ? '#1565c0' : info.color) + '">' + fmt(fire.frp, 1) + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">BRIGHTNESS</div><div class="dp-v">' + fmt(fire.brightness, 1, ' K') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">MODEL CONF.</div><div class="dp-v">' + fmt(fire.modelConfidence, 1, '%') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">STATUS</div><div class="dp-v">' + (fire.status || '--') + '</div></div>';
