@@ -35,6 +35,13 @@ COPY data/boundaries ./data/boundaries
 # and near_facility (2 of the 28 model features) never see a flare match,
 # so gas_flare classification loses its strongest real signal.
 COPY data/ggfr_flares ./data/ggfr_flares
+# WorldPop population raster (400m, sum-resampled from the real 100m
+# product -- 79.6MB vs 1.84GB, total population preserved to 99.9996%
+# accuracy). app/enrichment/population.py reads this for population_density
+# (a model feature), the WUI "meaningfully populated" gate, and plume
+# exposure counts. Without it these silently degrade to unknown rather
+# than crashing, but degrade nonetheless.
+COPY data/population ./data/population
 
 EXPOSE 8000
 # Use PORT env var if provided (Railway/Render inject it), fall back to 8000 for local/docker-compose

@@ -13,6 +13,15 @@ data/boundaries/*
 !data/ggfr_flares
 data/ggfr_flares/*
 !data/ggfr_flares/ggfr_flares_2020.csv
+# worldpop_india.tif here is a 400m-resolution, sum-resampled cut of the
+# real 100m WorldPop raster (79.6MB vs 1.84GB) -- total population
+# preserved to 99.9996% accuracy. The full 100m file and the three
+# year-specific ones (only used for historical/training-data generation,
+# not live classification) stay out; this is the only one live
+# population sampling actually needs.
+!data/population
+data/population/*
+!data/population/worldpop_india.tif
 datasets/
 *.pyc
 __pycache__/
