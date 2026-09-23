@@ -25,6 +25,11 @@ COPY alembic.ini .
 # data/models/latest/model.json at inference time. Without this the
 # container has no model to load and every cluster is left unclassified.
 COPY data/models ./data/models
+# State/district boundaries — geospatial/admin_boundaries.py resolves
+# every detection's location by point-in-polygon against this file.
+# Without it every detection reads "outside Indian boundaries" and the
+# india_only filter silently no-ops instead of hiding non-India detections.
+COPY data/boundaries ./data/boundaries
 
 EXPOSE 8000
 # Use PORT env var if provided (Railway/Render inject it), fall back to 8000 for local/docker-compose

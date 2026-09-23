@@ -7,6 +7,9 @@ data/*
 !data/models
 data/models/*
 !data/models/latest
+!data/boundaries
+data/boundaries/*
+!data/boundaries/india_districts.geojson
 datasets/
 *.pyc
 __pycache__/
