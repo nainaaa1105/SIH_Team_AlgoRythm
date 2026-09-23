@@ -25,7 +25,7 @@ FIRMS_AREA_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/{s
 # Archive queries add a trailing /{date}, e.g. .../10/2026-06-01 — FIRMS
 # caps day_range at 10 per single archive request, so 90-day backfills
 # must loop in <=10-day windows (see scripts/backfill_90day.py).
-FIRMS_MAX_ARCHIVE_DAY_RANGE = 10
+FIRMS_MAX_ARCHIVE_DAY_RANGE = 5
 
 
 class FirmsClientError(RuntimeError):
