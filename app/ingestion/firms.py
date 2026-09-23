@@ -108,7 +108,7 @@ def fetch_all_sources(settings: Settings | None = None) -> List[Dict]:
 
 def fetch_historical_window(end_date: str, day_range: int, settings: Optional[Settings] = None) -> List[Dict]:
     """Fetch every configured FIRMS source for a single historical window
-    (<=10 days, FIRMS' archive-query cap) ending on `end_date`.
+    (<=5 days, FIRMS' archive-query cap) ending on `end_date`.
     """
     settings = settings or get_settings()
     if day_range > FIRMS_MAX_ARCHIVE_DAY_RANGE:
