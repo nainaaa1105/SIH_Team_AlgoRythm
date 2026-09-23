@@ -1998,17 +1998,6 @@
       text-align: right; margin-top: 3px;
     }
     .dp-v.crown-hot { color: #1565c0 !important }
-    /* Dedicated threat banner at the top of the detail panel — WUI and
-       crown-fire each get their own full-width row here instead of
-       either being crammed inline into the FRP row. Both can render at
-       once, stacked, since a cluster can be flagged for both. */
-    .dp-threat-row {
-      display: flex; align-items: center; gap: 7px;
-      padding: 7px 10px; margin-bottom: 6px;
-      background: #1565c0; color: #fff; border-radius: 3px;
-      font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .2px;
-    }
-    .dp-threat-row .dp-threat-icon { font-size: 14px; flex: none }
     .wui-glowing-spot.crown-glow { animation-name: crown-pulse }
     @keyframes crown-pulse {
       0%   { filter: drop-shadow(0 0 2px #1565c0) drop-shadow(0 0 2px #1565c0); }
@@ -2028,13 +2017,23 @@
     #btn-sms-dispatch,
     #btn-zoom,
     #btn-report,
+    .dp-threat-badge,
     #btn-sms-dispatch:hover,
     #btn-zoom:hover,
-    #btn-report:hover {
+    #btn-report:hover,
+    .dp-threat-badge:hover {
       background: #0014a8 !important; color: #fff !important;
       border-color: #0014a8; font-weight: 700; letter-spacing: .4px; text-align: center;
     }
     #btn-sms-dispatch { width: 100%; margin-top: 10px; }
+    /* WUI/crown-fire status badges — same look as the SMS button below
+       them (btn.pri + this shared dark-blue override), under STATUS
+       rather than crammed into the FRP row or given a different style
+       of their own. Not interactive, so a div rather than a button, but
+       every visual class matches exactly. */
+    .dp-threat-badge {
+      display: block; width: 100%; margin-top: 10px; cursor: default;
+    }
     .rp-rdi-item {
       display: flex; justify-content: space-between; align-items: center;
       padding: 6px 8px; margin-bottom: 5px; background: #e3f0fb;
@@ -3991,21 +3990,23 @@
         : NA;
 
       // One dedicated banner per active threat, stacked at the top of the
-      // panel — not crammed inline into the FRP row. A cluster can be
-      // flagged WUI, crown-fire, both, or neither; each gets its own
-      // full-width row only when it actually applies.
+      // panel, styled exactly like the SMS button below them (btn pri +
+      // the shared dark-blue override) rather than either being crammed
+      // inline into the FRP row. Below STATUS, the last ordinary row —
+      // same placement pattern as the SMS button sitting after the
+      // Suppression card's own rows. A cluster can be flagged WUI,
+      // crown-fire, both, or neither; each renders only when it applies.
       const threatBanners =
         (fire.wuiThreat
-          ? '<div class="dp-threat-row"><span class="dp-threat-icon">&#x1F6A8;</span>WUI THREAT — ' +
+          ? '<div class="btn pri dp-threat-badge">&#x1F6A8; WUI THREAT — ' +
             (fire.wuiThreatenedAsset || 'nearby settlement') +
             (fire.wuiEtaHours != null ? ' (ETA ' + fmtWuiEta(fire.wuiEtaHours) + ')' : '') + '</div>'
           : '') +
         (fire.isCrownFire
-          ? '<div class="dp-threat-row"><span class="dp-threat-icon">&#x1F525;</span>CROWN FIRE THRESHOLD EXCEEDED</div>'
+          ? '<div class="btn pri dp-threat-badge">&#x1F525; CROWN FIRE THRESHOLD EXCEEDED</div>'
           : '');
 
       document.getElementById('dp-body').innerHTML =
-        threatBanners +
         '<div class="dp-row"><div class="dp-k">LOCATION</div><div class="dp-v hi" id="dp-location">' + place + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">LAT / LON</div><div class="dp-v">' + fire.lat.toFixed(4) + 'N<br>' + fire.lon.toFixed(4) + 'E</div></div>' +
         '<div class="dp-row"><div class="dp-k">DETECTED</div><div class="dp-v">' + when + '</div></div>' +
@@ -4016,7 +4017,8 @@
           '" style="color:' + (fire.isCrownFire ? '#1565c0' : info.color) + '">' + fmt(fire.frp, 1) + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">BRIGHTNESS</div><div class="dp-v">' + fmt(fire.brightness, 1, ' K') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">MODEL CONF.</div><div class="dp-v">' + fmt(fire.modelConfidence, 1, '%') + '</div></div>' +
-        '<div class="dp-row"><div class="dp-k">STATUS</div><div class="dp-v">' + (fire.status || '--') + '</div></div>';
+        '<div class="dp-row"><div class="dp-k">STATUS</div><div class="dp-v">' + (fire.status || '--') + '</div></div>' +
+        threatBanners;
 
       document.getElementById('cls-reasons').innerHTML = '<div class="cls-load">Loading model explanation...</div>';
       document.getElementById('xai-spread').innerHTML = '<span class="cls-load">Loading dispersion model...</span>';

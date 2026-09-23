@@ -555,10 +555,11 @@ def test_wui_and_crown_get_their_own_dedicated_banner_not_crammed_into_frp(html)
     FRP row's own value cell (a <br> + span appended to the number), and
     WUI threat had no place in the detail panel at all -- it only showed
     in the sidebar's separate WUI Threats list. Both now get their own
-    full-width row at the top of the panel, rendered only when they
-    actually apply, so a fire with neither shows no banner at all."""
+    full-width badge, styled exactly like the SMS button (see
+    test_threat_badges_match_the_sms_button_styling), rendered only when
+    they actually apply, so a fire with neither shows no badge at all."""
     open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
-    assert "dp-threat-row" in open_dp
+    assert "dp-threat-badge" in open_dp
     assert "fire.wuiThreat" in open_dp
     assert "fire.isCrownFire" in open_dp
     # The old broken placement -- inline inside the FRP value -- must be
@@ -568,13 +569,26 @@ def test_wui_and_crown_get_their_own_dedicated_banner_not_crammed_into_frp(html)
     assert "CROWN FIRE THRESHOLD EXCEEDED" not in frp_row
 
 
-def test_threat_banners_render_before_the_ordinary_rows(html):
-    """Safety-critical info first -- the banners must be prepended to
-    dp-body's innerHTML, not appended after LOCATION/STATUS/etc."""
+def test_threat_badges_render_after_status_not_before_location(html):
+    """By later request: the badges sit under STATUS (the last ordinary
+    row), matching where the SMS button sits relative to the Suppression
+    card's own rows -- not at the top of the panel."""
     open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
-    banner_idx = open_dp.index("threatBanners +")
-    location_idx = open_dp.index(">LOCATION<")
-    assert banner_idx < location_idx
+    status_idx = open_dp.index(">STATUS<")
+    banner_idx = open_dp.index("threatBanners;")
+    assert status_idx < banner_idx
+
+
+def test_threat_badges_match_the_sms_button_styling(html):
+    """Same classes as #btn-sms-dispatch (.btn.pri + the shared
+    dark-blue override) -- same background, text color, weight,
+    letter-spacing and full-width layout, not a separate style."""
+    open_dp = html.split("function openDP(fire)")[1].split("async function loadEventDetail")[0]
+    assert 'class="btn pri dp-threat-badge"' in open_dp
+    css_rule = html.split("#btn-sms-dispatch,")[1].split("}")[0]
+    assert ".dp-threat-badge" in css_rule
+    assert "background: #0014a8" in css_rule
+    assert "color: #fff" in css_rule
 
 
 def test_wui_banner_shows_the_threatened_asset_and_eta(html):
