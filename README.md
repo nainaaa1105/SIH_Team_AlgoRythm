@@ -23,7 +23,7 @@ Stated up front so nobody has to discover it by running the thing.
 | Dozier sub-pixel fire temperature (dual-band retrieval) | **Working** — converges on multi-detection clusters |
 | Sentinel-2 patches, spectral indices, smoke bearing | **Working** |
 | PTSI persistence, rhythm fingerprint, Kalman escalation forecast | **Working** |
-| XGBoost classification + SHAP explanations | **Working** — model v2, macro-F1 0.893 |
+| XGBoost classification + SHAP explanations | **Working** — model v5, macro-F1 0.663 (v2 scored 0.893 but was trained/evaluated against a looser weak-label rule set since found to mislabel real industrial fires and agri burns as mining — see `classifier/labels/rules.py`; v5 reflects the corrected labels) |
 | Gaussian plume, threat corridor, population exposure | **Working** |
 | Dashboard, live WebSocket push, incident report export | **Working** |
 | EfficientNet-B0 image classifier | **No trained weights.** `data/image_models/` does not exist, so `image_predicted_class` is always null and late fusion runs tabular-only. The evidence-weighting engine records the gap and discounts confidence. The Sentinel-2 *indices* still reach the model. |
@@ -216,8 +216,14 @@ connection manager.
 ## The model
 
 XGBoost, five classes (`industrial_fire`, `gas_flare`, `wildfire`,
-`agricultural_burning`, `mining`), 28 features, macro-F1 **0.893** on a
-spatial-tile split (89,238 train / 22,541 test). Feature order is
+`agricultural_burning`, `mining`), 28 features, macro-F1 **0.663** on a
+spatial-tile split (119,782 train / 30,178 test, model v5). An earlier
+version (v2) scored 0.893 on a smaller split, but its weak-supervision
+labels for mining and agricultural_burning were later found to be
+leaky — see `classifier/labels/rules.py`'s `mining_rule`/`agri_burn_rule`
+docstrings — so that number reflected an easier, partly-wrong ground
+truth rather than genuinely higher accuracy. v5 is trained against the
+corrected label rules. Feature order is
 persisted alongside the model and re-validated at inference, so a
 train/predict mismatch fails loudly instead of silently scrambling the
 vector.
