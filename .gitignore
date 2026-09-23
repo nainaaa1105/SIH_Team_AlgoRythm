@@ -1,6 +1,12 @@
 .env
 secrets/
-data/
+# data/ is 5.7GB of boundaries/cache/population/patches/thumbnails — keep
+# that out, but the trained classifier (~1MB, data/models/latest/) is a
+# build dependency the Railway image needs, not raw data, so it stays in.
+data/*
+!data/models
+data/models/*
+!data/models/latest
 datasets/
 *.pyc
 __pycache__/

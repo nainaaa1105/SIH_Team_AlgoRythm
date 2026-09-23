@@ -1,0 +1,63 @@
+{
+  "version": "v2",
+  "trained_at": "2026-09-15T09:36:32.119787+00:00",
+  "feature_columns": [
+    "pct_cropland",
+    "pct_forest",
+    "pct_urban",
+    "facility_distance_m",
+    "facility_prior_weight",
+    "population_density",
+    "near_facility",
+    "frp_mean",
+    "frp_max",
+    "frp_std",
+    "frp_zscore",
+    "brightness_mean",
+    "brightness_max",
+    "confidence_mean",
+    "persistence_days",
+    "n_detections",
+    "detections_per_day",
+    "night_fraction",
+    "source_diversity",
+    "spatial_extent_km",
+    "spatial_growth_rate",
+    "dozier_temp",
+    "ndvi",
+    "ndbi",
+    "smoke_red_blue_ratio",
+    "shift_sharpness",
+    "weekend_suppression",
+    "kalman_time_to_critical"
+  ],
+  "classes": [
+    "industrial_fire",
+    "gas_flare",
+    "wildfire",
+    "agricultural_burning",
+    "mining"
+  ],
+  "metrics": {
+    "macro_f1": 0.8930032591359822,
+    "train_macro_f1": 0.9479712602143209,
+    "overfit_gap": 0.05496800107833866,
+    "weighted_f1": 0.9985287901717226
+  },
+  "hyperparameters": {
+    "n_estimators": 140,
+    "max_depth": 3,
+    "learning_rate": 0.04766795293084544,
+    "subsample": 0.6818138912393573,
+    "colsample_bytree": 0.364912482482348,
+    "colsample_bynode": 0.5781647831492341,
+    "min_child_weight": 35,
+    "reg_lambda": 6.987683629255205,
+    "reg_alpha": 0.8258181217069728,
+    "tree_method": "hist"
+  },
+  "n_train_samples": 89238,
+  "n_test_samples": 22541,
+  "split_strategy": "spatial_tile",
+  "notes": "v2 retrain with anti-overfit regularization: max_depth\u22646, colsample_bytree\u22640.65, L1+L2, inverse-freq class weights, gap-penalised Optuna objective. Train/test gap=0.0550."
+}

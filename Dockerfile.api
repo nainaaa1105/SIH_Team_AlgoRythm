@@ -21,6 +21,10 @@ COPY gateway ./gateway
 COPY static ./static
 COPY scripts ./scripts
 COPY alembic.ini .
+# Trained classifier — classifier/model/registry.py reads
+# data/models/latest/model.json at inference time. Without this the
+# container has no model to load and every cluster is left unclassified.
+COPY data/models ./data/models
 
 EXPOSE 8000
 # Use PORT env var if provided (Railway/Render inject it), fall back to 8000 for local/docker-compose
