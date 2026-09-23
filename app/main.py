@@ -247,19 +247,41 @@ def _broker_is_reachable(timeout_seconds: float = 1.0) -> bool:
         return False
 
 
+def _celery_worker_available(timeout_seconds: float = 1.5) -> bool:
+    """A reachable broker is not the same as a worker that will ever
+    drain it. A deployment can have Redis provisioned with no worker
+    service running against it at all (Dockerfile.worker exists but was
+    never deployed) -- in that case `.delay()` calls succeed immediately
+    and then sit in the queue forever, un-consumed, with no error raised
+    anywhere. Pinging for a live worker (not just a live broker) is what
+    actually answers "will this get processed" -- see /ingest/run below.
+    """
+    if not _broker_is_reachable(timeout_seconds):
+        return False
+    try:
+        from app.orchestration.queue import celery_app
+
+        pong = celery_app.control.ping(timeout=timeout_seconds)
+        return bool(pong)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @app.post("/ingest/run")
 async def trigger_ingestion_cycle(classify: bool = True):
     """Manual trigger for one ingestion cycle — useful for demos/ops
     without waiting for the next scheduled poll. Runs in a thread pool
     so the API event loop stays responsive; returns a summary.
 
-    With a broker up, this keeps the deployment behaviour: ingest, then
-    fan the per-cluster work out over Celery. Without one it runs that
-    same work in-process via `local_pipeline` instead of failing, which
-    is what makes the endpoint usable on a local install — and it is also
-    the only path on which the WebSocket push reaches open dashboards,
-    since `_notify_dashboards` broadcasts to *this* process's connection
-    manager and a separate Celery worker has its own.
+    With a broker AND a live worker to drain it, this keeps the
+    deployment behaviour: ingest, then fan the per-cluster work out over
+    Celery. Without a live worker it runs that same work in-process via
+    `local_pipeline` instead — a reachable broker with nothing consuming
+    it would otherwise accept the `.delay()` calls, report success, and
+    then silently never classify anything (see `_celery_worker_available`).
+    In-process is also the only path on which the WebSocket push reaches
+    open dashboards, since `_notify_dashboards` broadcasts to *this*
+    process's connection manager and a separate Celery worker has its own.
 
     `classify=false` ingests only, leaving classification for later.
     """
@@ -267,12 +289,12 @@ async def trigger_ingestion_cycle(classify: bool = True):
 
     from app.orchestration.pipeline import run_ingestion_cycle
 
-    if _broker_is_reachable():
+    if _celery_worker_available():
         summary = await asyncio.to_thread(run_ingestion_cycle)
         summary["mode"] = "celery"
         return summary
 
-    logger.info("No Celery broker reachable — running the cycle in-process")
+    logger.info("No live Celery worker — running the cycle in-process")
 
     if not classify:
         summary = await asyncio.to_thread(run_ingestion_cycle, None, False)
