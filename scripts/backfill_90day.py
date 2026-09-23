@@ -19,7 +19,11 @@ from app.db.session import session_scope
 from app.ingestion import firms
 from app.ingestion.cluster import cluster_batch
 from app.ingestion.dedup import full_dedup
-from app.orchestration.pipeline import load_active_cluster_centroids, persist_records_and_clusters
+from app.orchestration.pipeline import (
+    _prefetch_cloud_fractions,
+    load_active_cluster_centroids,
+    persist_records_and_clusters,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,7 +52,14 @@ def backfill(total_days: int, dispatch_jobs: bool) -> None:
             with session_scope() as session:
                 existing_clusters = load_active_cluster_centroids(session)
                 assignments = cluster_batch(deduped, existing_clusters, settings)
-                touched = persist_records_and_clusters(session, deduped, assignments)
+            # Cloud-fraction lookups hit CDSE/GEE over the network — done
+            # outside the DB transaction above, same reasoning as the live
+            # ingestion path (see _prefetch_cloud_fractions's docstring):
+            # keeping a Postgres session open across seconds of network
+            # I/O pins a connection and its locks for no reason.
+            cloud_fractions = _prefetch_cloud_fractions(assignments)
+            with session_scope() as session:
+                touched = persist_records_and_clusters(session, deduped, assignments, cloud_fractions)
                 total_clusters += len(touched)
 
             if dispatch_jobs:
