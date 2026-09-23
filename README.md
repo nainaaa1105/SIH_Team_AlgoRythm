@@ -246,7 +246,9 @@ imputing zeros, which is why live confidences sit in the 30-60% band.
 FIRMS NRT publishes on a lag. A `FIRMS_DAY_RANGE=1` query over India
 routinely returns zero rows simply because the current day's granules
 have not been processed yet; `3` is the smallest window that reliably
-returns data. The archive endpoint caps a single query at 10 days.
+returns data. The archive endpoint caps a single query at 5 days
+(confirmed against the live API's own error text — `scripts/backfill_90day.py`
+loops in 5-day windows, not the 10 some FIRMS docs suggest).
 
 ### No sample data
 

@@ -1,4 +1,4 @@
-"""90-day retrospective replay: pulls the FIRMS archive in <=10-day
+"""90-day retrospective replay: pulls the FIRMS archive in <=5-day
 windows, then runs it through the same dedup -> cluster -> persist path
 as the live scheduler, to (a) generate training data for M2 and (b)
 validate the pipeline at full scale before the final deployment.
@@ -24,7 +24,7 @@ from app.orchestration.pipeline import load_active_cluster_centroids, persist_re
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-WINDOW_DAYS = 10  # FIRMS archive query cap
+WINDOW_DAYS = 5  # FIRMS archive query cap — confirmed against the live API
 
 
 def backfill(total_days: int, dispatch_jobs: bool) -> None:
