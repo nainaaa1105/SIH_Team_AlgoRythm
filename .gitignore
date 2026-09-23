@@ -10,6 +10,9 @@ data/models/*
 !data/boundaries
 data/boundaries/*
 !data/boundaries/india_districts.geojson
+!data/ggfr_flares
+data/ggfr_flares/*
+!data/ggfr_flares/ggfr_flares_2020.csv
 datasets/
 *.pyc
 __pycache__/

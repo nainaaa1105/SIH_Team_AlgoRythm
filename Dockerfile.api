@@ -30,6 +30,11 @@ COPY data/models ./data/models
 # Without it every detection reads "outside Indian boundaries" and the
 # india_only filter silently no-ops instead of hiding non-India detections.
 COPY data/boundaries ./data/boundaries
+# GGFR flare registry — the source scripts/bulk_load_gem.py --ggfr reads
+# to populate facility_type='flare' rows. Without it, facility_distance_m
+# and near_facility (2 of the 28 model features) never see a flare match,
+# so gas_flare classification loses its strongest real signal.
+COPY data/ggfr_flares ./data/ggfr_flares
 
 EXPOSE 8000
 # Use PORT env var if provided (Railway/Render inject it), fall back to 8000 for local/docker-compose
