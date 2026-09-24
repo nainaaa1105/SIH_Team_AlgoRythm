@@ -96,7 +96,7 @@ def _incident(**overrides):
 
 
 def test_sms_body_includes_all_required_fields_with_real_values():
-    body = build_sms_body(_incident())
+    body = build_sms_body(_incident(), map_url="http://localhost:8000/?cluster=42")
     assert "FIREOPS EMERGENCY ALERT" in body
     assert "Location: SPS Steel and Power Limited" in body
     assert "Coordinates: 21.82120, 83.99680" in body
@@ -106,16 +106,24 @@ def test_sms_body_includes_all_required_fields_with_real_values():
     assert "Air Support: Required" in body
     assert "Aerial Tanks: 2" in body
     assert GOOGLE_MAPS_NAV_URL.format(lat=21.8212, lon=83.9968) in body
+    assert "http://localhost:8000/?cluster=42" in body
     assert "Respond immediately." in body
 
 
-def test_sms_body_no_longer_carries_the_dashboard_link():
-    """By request: the "Fire Location:" section (a link back to our own
-    dashboard) is removed entirely -- NAVIGATE (Google Maps) is the only
-    link in the message now."""
-    body = build_sms_body(_incident())
+def test_sms_body_has_navigate_before_web_page():
+    """By request: NAVIGATE (Google Maps) comes first, then Web Page
+    (our dashboard link) below it -- not the other order, and not the
+    old "Fire Location" heading."""
+    body = build_sms_body(_incident(), map_url="http://localhost:8000/?cluster=42")
     assert "Fire Location:" not in body
-    assert "?cluster=" not in body
+    assert "Web Page:" in body
+    nav_idx = body.index("NAVIGATE:")
+    web_idx = body.index("Web Page:")
+    assert nav_idx < web_idx
+    # The actual link lines must also be in that order, not just the headings.
+    nav_url_idx = body.index(GOOGLE_MAPS_NAV_URL.format(lat=21.8212, lon=83.9968))
+    map_url_idx = body.index("http://localhost:8000/?cluster=42")
+    assert nav_url_idx < map_url_idx
 
 
 def test_sms_body_never_fabricates_a_missing_location_or_water_value():
@@ -126,7 +134,7 @@ def test_sms_body_never_fabricates_a_missing_location_or_water_value():
         "resource_kind": None, "primary_volume_l": None, "primary_volume_m3": None,
         "tanker_trips": None, "air_drop_trips": None, "air_support_recommended": False,
     })
-    body = build_sms_body(incident)
+    body = build_sms_body(incident, map_url="http://localhost:8000/?cluster=42")
     assert "Location: Location pending confirmation" in body
     assert "Water Required: Not available" in body
     assert "Fire Truck Trips: Not available" in body
@@ -149,7 +157,7 @@ def test_sms_body_reports_mining_fill_volume_not_a_fake_litre_count():
         "air_drop_trips": None,
         "air_support_recommended": False,
     })
-    body = build_sms_body(incident)
+    body = build_sms_body(incident, map_url="http://localhost:8000/?cluster=42")
     assert "Water Required: Not applicable" in body
     assert "320" in body
     assert "Fire Truck Trips: 32" in body
