@@ -20,6 +20,16 @@ queue's and why.
 facility distance is three of the model's twenty-eight features, so
 clusters classified before the facility registry was populated were
 decided on genuinely less evidence and are worth re-deciding.
+
+`--reclassify` orders clusters by their classification's `updated_at`,
+oldest (and never-classified) first, rather than by cluster recency.
+This makes an interrupted pass resume itself on the next identical
+invocation with no separate flag or checkpoint file needed: a cluster
+this process already reached has a freshly-bumped `updated_at` and
+sorts to the back, so re-running the same command picks up wherever it
+left off instead of starting the whole pass over. Whatever
+auto-deploy or process restart killed the previous run does not lose
+that progress -- it lives in Postgres, not the container.
 """
 import argparse
 import json
@@ -74,9 +84,18 @@ def main() -> None:
 
         from app.db.models import Cluster
         from app.db.session import session_scope
+        from classifier.db.models import Classification
 
         with session_scope() as session:
-            stmt = select(Cluster).order_by(Cluster.last_seen.desc().nullslast())
+            # Oldest-classified-or-never-classified first (nulls first),
+            # not most-recently-seen first: see the module docstring for
+            # why this ordering is what makes a re-run resume rather than
+            # restart the pass.
+            stmt = (
+                select(Cluster)
+                .outerjoin(Classification, Classification.cluster_id == Cluster.id)
+                .order_by(Classification.updated_at.asc().nullsfirst())
+            )
             if args.limit:
                 stmt = stmt.limit(args.limit)
             targets = []
