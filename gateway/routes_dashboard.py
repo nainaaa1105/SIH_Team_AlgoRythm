@@ -604,10 +604,14 @@ def _top_facility_for(
         if named_feature_is_same_site(candidate, row.distance_m):
             nearby_named = candidate["name"]
 
-    # Only actually swap the generic name out once a real, specific
-    # replacement was found — a generic-but-real name still beats
-    # showing nothing when the live lookup comes up empty.
-    display_name = None if (name_is_generic and nearby_named) else name
+    # An administrative zone label ("Cluster 8 and Cluster 9 Coal
+    # Mines") is never shown as LOCATION, even when no real named
+    # neighbour is found: the frontend's own fallback chain (name ->
+    # "Near <nearby_named_feature>" -> district/state) already lands on
+    # a genuine, non-fabricated place name (e.g. "Dhanbad, Jharkhand")
+    # once this is null, which reads far better than the raw
+    # administrative label ever did.
+    display_name = None if name_is_generic else name
 
     return {
         "facility_id": row.facility_id,

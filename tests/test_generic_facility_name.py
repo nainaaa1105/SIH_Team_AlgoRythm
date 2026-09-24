@@ -14,7 +14,9 @@ site). No fabrication added: a generic name with no better real
 alternative nearby still shows the real (if generic) name, never blank
 and never invented.
 """
-from gateway.routes_dashboard import _GENERIC_FACILITY_NAME
+import inspect
+
+from gateway.routes_dashboard import _GENERIC_FACILITY_NAME, _top_facility_for
 
 
 def test_matches_the_actually_observed_cluster_names():
@@ -46,3 +48,22 @@ def test_does_not_match_cluster_appearing_mid_name():
 
 def test_is_case_insensitive():
     assert _GENERIC_FACILITY_NAME.match("cluster 8 coal mines")
+
+
+def test_generic_name_is_always_suppressed_even_with_no_real_replacement():
+    """By request: a generic "Cluster N..." label must never reach the
+    LOCATION field, even when the live nearby-feature lookup finds
+    nothing plausible. The frontend's own fallback chain (name -> "Near
+    X" -> district/state) already lands on a genuine place name (e.g.
+    "Dhanbad, Jharkhand") once this is null -- that's what should show,
+    not the raw administrative label and not a bare cluster number.
+
+    _top_facility_for needs a live DB session to call directly (no
+    fixtures in this suite -- see test_gateway.py's docstring for why),
+    so this is a source-level regression guard on the exact rule
+    instead: display_name must be unconditional on name_is_generic,
+    not additionally gated on nearby_named being truthy.
+    """
+    source = inspect.getsource(_top_facility_for)
+    assert "display_name = None if name_is_generic else name" in source
+    assert "None if (name_is_generic and nearby_named)" not in source
