@@ -2493,6 +2493,9 @@
               <div class="cb-row"><input type="checkbox" id="cb-v2" checked><label for="cb-v2" id="lbl-v2">Day Before</label>
               </div>
             </div>
+            <div class="sb-div"></div>
+            <div class="cb-row" style="margin-top:8px"><input type="checkbox" id="cb-older" checked><label
+                for="cb-older">Older Data (backfilled history)</label></div>
           </div>
         </div>
         <div class="acc">
@@ -3097,6 +3100,14 @@
     let filt = {
       types: new Set(Object.keys(FT)),
       sensorDates: new Set(),
+      // Bug: sensorDateOptions() only ever offers checkboxes for the 3
+      // most-recent distinct acqDates present in the data. Once older
+      // (backfilled) dates exist too, a fire whose acqDate isn't one of
+      // those 3 fell outside passesSensorDateFilter's check entirely and
+      // showed regardless of checkbox state -- unticking every date box
+      // did nothing for it. showOlderData is the fire's real, explicit
+      // on/off control instead of an implicit always-on.
+      showOlderData: true,
       minFrp: 0,
       state: '',
       conf: new Set(['HIGH', 'NOMINAL']),
@@ -3505,6 +3516,13 @@
     // the operator why.
     function passesSensorDateFilter(f) {
       const offeredDates = new Set(sensorDateOptions());
+      // A date outside the 3 offered checkboxes (backfilled history) has
+      // no per-date checkbox of its own -- governed by showOlderData
+      // instead, so it has real, explicit on/off control rather than
+      // silently bypassing every date checkbox.
+      if (f.acqDate && !offeredDates.has(f.acqDate)) {
+        return filt.showOlderData;
+      }
       return !(f.sensor && f.acqDate && offeredDates.has(f.acqDate)
         && !filt.sensorDates.has(f.sensor + '|' + f.acqDate));
     }
@@ -4432,6 +4450,9 @@
           cb.addEventListener('change', () => { readSensorFilter(); applyFilt(); });
         });
       });
+
+      const olderCb = document.getElementById('cb-older');
+      if (olderCb) olderCb.addEventListener('change', () => { filt.showOlderData = olderCb.checked; applyFilt(); });
     }
 
     /* ─── VIEW CONTROLS ──────────────────────────────────────── */
@@ -4538,6 +4559,7 @@
           showWui: true,
           showCrown: true,
           activeOnly: false,
+          showOlderData: true,
         };
         Object.keys(FT).forEach(t => { const cb = document.getElementById('cb-' + t); if (cb) cb.checked = true });
         const wuiCb = document.getElementById('cb-wui-only'); if (wuiCb) wuiCb.checked = false;
@@ -4546,6 +4568,7 @@
         const showWuiCb = document.getElementById('cb-show-wui'); if (showWuiCb) showWuiCb.checked = true;
         const showCrownCb = document.getElementById('cb-show-crown'); if (showCrownCb) showCrownCb.checked = true;
         const activeOnlyCb = document.getElementById('cb-active-only'); if (activeOnlyCb) activeOnlyCb.checked = false;
+        const olderCb = document.getElementById('cb-older'); if (olderCb) olderCb.checked = true;
         // Reset the sensor panel to its default (newest day, both
         // instruments) and rebuild the filter from the boxes, so the
         // controls and the map cannot disagree after a reset.
