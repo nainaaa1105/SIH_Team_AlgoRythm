@@ -30,6 +30,7 @@ taking down the whole app):
     /                     M6 - the dashboard itself
 """
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -42,7 +43,28 @@ from app.config import get_settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="SIH162 FireSight Platform API", version="0.6.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Starts the FIRMS poller in-process on API startup, so the
+    dashboard actually refreshes on its own instead of only ever
+    reflecting whatever was last ingested by hand. Previously nothing
+    called `start_scheduler()` at all -- every detection up to this
+    point came from a manual /ingest/run or script invocation; left
+    alone, the dashboard would never pick up a new day's fires. Shut
+    down cleanly on exit rather than leaving a background thread dangling
+    past the ASGI server's own lifetime.
+    """
+    from app.orchestration.scheduler import start_scheduler
+
+    scheduler = start_scheduler()
+    try:
+        yield
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="SIH162 FireSight Platform API", version="0.6.0", lifespan=lifespan)
 
 # Allowed origins are driven by the CORS_ORIGINS env var (see app/config.py).
 # Defaults to ["*"] for local dev; set CORS_ORIGINS in production, e.g.:
@@ -221,91 +243,22 @@ def health():
     return {"status": "ok", "version": app.version, "modules": MOUNTED_MODULES}
 
 
-def _broker_is_reachable(timeout_seconds: float = 1.0) -> bool:
-    """Can we actually reach the Celery broker right now?
-
-    `run_ingestion_cycle(dispatch_jobs=True)` ends in `.delay()` calls.
-    With no broker those do not fail fast — Celery retries the connection
-    and eventually raises "Retry limit exceeded", by which point the
-    ingestion writes have already committed and the caller gets a bare
-    500 for work that partly succeeded. Checking first lets the endpoint
-    pick a path that will actually complete.
-    """
-    try:
-        import redis
-
-        from app.config import get_settings
-
-        client = redis.Redis.from_url(
-            get_settings().redis_url,
-            socket_connect_timeout=timeout_seconds,
-            socket_timeout=timeout_seconds,
-        )
-        client.ping()
-        return True
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _celery_worker_available(timeout_seconds: float = 1.5) -> bool:
-    """A reachable broker is not the same as a worker that will ever
-    drain it. A deployment can have Redis provisioned with no worker
-    service running against it at all (Dockerfile.worker exists but was
-    never deployed) -- in that case `.delay()` calls succeed immediately
-    and then sit in the queue forever, un-consumed, with no error raised
-    anywhere. Pinging for a live worker (not just a live broker) is what
-    actually answers "will this get processed" -- see /ingest/run below.
-    """
-    if not _broker_is_reachable(timeout_seconds):
-        return False
-    try:
-        from app.orchestration.queue import celery_app
-
-        pong = celery_app.control.ping(timeout=timeout_seconds)
-        return bool(pong)
-    except Exception:  # noqa: BLE001
-        return False
-
-
 @app.post("/ingest/run")
 async def trigger_ingestion_cycle(classify: bool = True):
     """Manual trigger for one ingestion cycle — useful for demos/ops
     without waiting for the next scheduled poll. Runs in a thread pool
     so the API event loop stays responsive; returns a summary.
 
-    With a broker AND a live worker to drain it, this keeps the
-    deployment behaviour: ingest, then fan the per-cluster work out over
-    Celery. Without a live worker it runs that same work in-process via
-    `local_pipeline` instead — a reachable broker with nothing consuming
-    it would otherwise accept the `.delay()` calls, report success, and
-    then silently never classify anything (see `_celery_worker_available`).
-    In-process is also the only path on which the WebSocket push reaches
-    open dashboards, since `_notify_dashboards` broadcasts to *this*
-    process's connection manager and a separate Celery worker has its own.
+    The scheduler's automatic poll (see `lifespan` below) hits this exact
+    same decision via `run_cycle_safely` — not a separate code path.
 
     `classify=false` ingests only, leaving classification for later.
     """
     import asyncio
 
-    from app.orchestration.pipeline import run_ingestion_cycle
+    from app.orchestration.pipeline import run_cycle_safely
 
-    if _celery_worker_available():
-        summary = await asyncio.to_thread(run_ingestion_cycle)
-        summary["mode"] = "celery"
-        return summary
-
-    logger.info("No live Celery worker — running the cycle in-process")
-
-    if not classify:
-        summary = await asyncio.to_thread(run_ingestion_cycle, None, False)
-        summary["mode"] = "in-process (ingest only)"
-        return summary
-
-    from app.orchestration.local_pipeline import run_cycle
-
-    summary = await asyncio.to_thread(run_cycle)
-    summary["mode"] = "in-process"
-    return summary
+    return await asyncio.to_thread(run_cycle_safely, classify)
 
 
 # Registered after every API route so the catch-all static mount cannot

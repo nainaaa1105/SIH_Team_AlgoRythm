@@ -252,6 +252,82 @@ def run_ingestion_cycle(settings: Optional[Settings] = None, dispatch_jobs: bool
     return {"raw": len(raw_records), "deduped": len(deduped), "clusters_touched": len(touched)}
 
 
+def broker_is_reachable(timeout_seconds: float = 1.0) -> bool:
+    """Can we actually reach the Celery broker right now?
+
+    `run_ingestion_cycle(dispatch_jobs=True)` ends in `.delay()` calls.
+    With no broker those do not fail fast — Celery retries the connection
+    and eventually raises "Retry limit exceeded", by which point the
+    ingestion writes have already committed and the caller gets a bare
+    500 for work that partly succeeded. Checking first lets the caller
+    pick a path that will actually complete.
+    """
+    try:
+        import redis
+
+        client = redis.Redis.from_url(
+            get_settings().redis_url,
+            socket_connect_timeout=timeout_seconds,
+            socket_timeout=timeout_seconds,
+        )
+        client.ping()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def celery_worker_available(timeout_seconds: float = 1.5) -> bool:
+    """A reachable broker is not the same as a worker that will ever
+    drain it. A deployment can have Redis provisioned with no worker
+    service running against it at all (Dockerfile.worker exists but was
+    never deployed as its own service) -- in that case `.delay()` calls
+    succeed immediately and then sit in the queue forever, un-consumed,
+    with no error raised anywhere. Pinging for a live worker (not just a
+    live broker) is what actually answers "will this get processed".
+    """
+    if not broker_is_reachable(timeout_seconds):
+        return False
+    try:
+        from app.orchestration.queue import celery_app
+
+        pong = celery_app.control.ping(timeout=timeout_seconds)
+        return bool(pong)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def run_cycle_safely(classify: bool = True) -> Dict:
+    """Pick the dispatch path that will actually get consumed, not just
+    accepted -- the single decision both /ingest/run and the scheduler's
+    periodic job share, so there is exactly one place this is decided.
+
+    With a broker AND a live worker to drain it, this fans per-cluster
+    work out over Celery, matching the intended deployment shape. Without
+    a live worker it runs that same work in-process via `local_pipeline`
+    instead -- see `celery_worker_available`'s docstring for why a
+    reachable-but-unconsumed broker would otherwise silently classify
+    nothing. `classify=False` ingests only, leaving classification for
+    later.
+    """
+    if celery_worker_available():
+        summary = run_ingestion_cycle()
+        summary["mode"] = "celery"
+        return summary
+
+    logger.info("No live Celery worker — running the cycle in-process")
+
+    if not classify:
+        summary = run_ingestion_cycle(None, False)
+        summary["mode"] = "in-process (ingest only)"
+        return summary
+
+    from app.orchestration.local_pipeline import run_cycle
+
+    summary = run_cycle()
+    summary["mode"] = "in-process"
+    return summary
+
+
 def _notify_dashboards(touched: List[Tuple[int, float, float, bool]]) -> None:
     """Best-effort WebSocket push to open dashboards.
 
