@@ -96,7 +96,7 @@ def _incident(**overrides):
 
 
 def test_sms_body_includes_all_required_fields_with_real_values():
-    body = build_sms_body(_incident(), map_url="http://localhost:8000/?cluster=42")
+    body = build_sms_body(_incident())
     assert "FIREOPS EMERGENCY ALERT" in body
     assert "Location: SPS Steel and Power Limited" in body
     assert "Coordinates: 21.82120, 83.99680" in body
@@ -105,9 +105,17 @@ def test_sms_body_includes_all_required_fields_with_real_values():
     assert "Ground Support: Required" in body
     assert "Air Support: Required" in body
     assert "Aerial Tanks: 2" in body
-    assert "http://localhost:8000/?cluster=42" in body
     assert GOOGLE_MAPS_NAV_URL.format(lat=21.8212, lon=83.9968) in body
     assert "Respond immediately." in body
+
+
+def test_sms_body_no_longer_carries_the_dashboard_link():
+    """By request: the "Fire Location:" section (a link back to our own
+    dashboard) is removed entirely -- NAVIGATE (Google Maps) is the only
+    link in the message now."""
+    body = build_sms_body(_incident())
+    assert "Fire Location:" not in body
+    assert "?cluster=" not in body
 
 
 def test_sms_body_never_fabricates_a_missing_location_or_water_value():
@@ -118,7 +126,7 @@ def test_sms_body_never_fabricates_a_missing_location_or_water_value():
         "resource_kind": None, "primary_volume_l": None, "primary_volume_m3": None,
         "tanker_trips": None, "air_drop_trips": None, "air_support_recommended": False,
     })
-    body = build_sms_body(incident, map_url="http://localhost:8000/?cluster=42")
+    body = build_sms_body(incident)
     assert "Location: Location pending confirmation" in body
     assert "Water Required: Not available" in body
     assert "Fire Truck Trips: Not available" in body
@@ -141,7 +149,7 @@ def test_sms_body_reports_mining_fill_volume_not_a_fake_litre_count():
         "air_drop_trips": None,
         "air_support_recommended": False,
     })
-    body = build_sms_body(incident, map_url="http://localhost:8000/?cluster=42")
+    body = build_sms_body(incident)
     assert "Water Required: Not applicable" in body
     assert "320" in body
     assert "Fire Truck Trips: 32" in body

@@ -128,7 +128,7 @@ def _fmt_truck_trips(suppression: Dict[str, Any]) -> Optional[int]:
     return None
 
 
-def build_sms_body(incident: Dict[str, Any], map_url: str) -> str:
+def build_sms_body(incident: Dict[str, Any]) -> str:
     suppression = incident["suppression"]
     lat, lon = incident["lat"], incident["lon"]
 
@@ -154,9 +154,6 @@ def build_sms_body(incident: Dict[str, Any], map_url: str) -> str:
     if air_required and air_trips:
         lines.append(f"Aerial Tanks: {air_trips}")
     lines += [
-        "",
-        "Fire Location:",
-        map_url,
         "",
         "NAVIGATE:",
         nav_url,
@@ -213,8 +210,7 @@ def dispatch_emergency_sms(
     if not recipient:
         return {"ok": False, "duplicate": False, "error": "No SMS recipient configured (TEST_SMS_RECIPIENT is empty)"}
 
-    map_url = f"{settings.frontend_base_url.rstrip('/')}/?cluster={cluster_id}"
-    body = build_sms_body(incident, map_url)
+    body = build_sms_body(incident)
 
     result = send_sms(recipient, body, request_id=f"cluster-{cluster_id}-{int(datetime.now(timezone.utc).timestamp())}")
 
