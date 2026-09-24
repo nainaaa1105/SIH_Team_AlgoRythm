@@ -2493,9 +2493,6 @@
               <div class="cb-row"><input type="checkbox" id="cb-v2" checked><label for="cb-v2" id="lbl-v2">Day Before</label>
               </div>
             </div>
-            <div class="sb-div"></div>
-            <div class="cb-row" style="margin-top:8px"><input type="checkbox" id="cb-older" checked><label
-                for="cb-older">Older Data (backfilled history)</label></div>
           </div>
         </div>
         <div class="acc">
@@ -2920,7 +2917,20 @@
     /* ─── LOAD LIVE DETECTIONS ───────────────────────────────────── */
     async function loadFires() {
       const data = await API.detections(2000);
-      allFires = (data.items || []).map(toFire);
+      const fires = (data.items || []).map(toFire);
+      // Only the 3 most recent distinct acquisition dates are ever kept
+      // in the frontend at all -- backfilled/older history stays in the
+      // database (still useful there), but never reaches allFires, so
+      // it can never show as a spot on the map or leak through any
+      // overlay that reads allFires directly. Rolls forward on its own
+      // as new days' data arrives, with no user-facing toggle: a fire
+      // with no acqDate yet (pending) is kept rather than dropped, same
+      // fail-open reasoning passesSensorDateFilter already uses for
+      // missing type/confidence.
+      const recentDates = new Set(
+        [...new Set(fires.map(f => f.acqDate).filter(Boolean))].sort().reverse().slice(0, 3)
+      );
+      allFires = fires.filter(f => !f.acqDate || recentDates.has(f.acqDate));
       visFires = [...allFires];
       return allFires;
     }
@@ -3100,14 +3110,6 @@
     let filt = {
       types: new Set(Object.keys(FT)),
       sensorDates: new Set(),
-      // Bug: sensorDateOptions() only ever offers checkboxes for the 3
-      // most-recent distinct acqDates present in the data. Once older
-      // (backfilled) dates exist too, a fire whose acqDate isn't one of
-      // those 3 fell outside passesSensorDateFilter's check entirely and
-      // showed regardless of checkbox state -- unticking every date box
-      // did nothing for it. showOlderData is the fire's real, explicit
-      // on/off control instead of an implicit always-on.
-      showOlderData: true,
       minFrp: 0,
       state: '',
       conf: new Set(['HIGH', 'NOMINAL']),
@@ -3515,14 +3517,11 @@
     // would still leave every WUI warning on screen with nothing telling
     // the operator why.
     function passesSensorDateFilter(f) {
+      // loadFires() already drops anything outside the 3 most recent
+      // acquisition dates before it ever reaches allFires, so every date
+      // seen here is necessarily one of sensorDateOptions()'s own dates —
+      // no separate "older data" branch needed.
       const offeredDates = new Set(sensorDateOptions());
-      // A date outside the 3 offered checkboxes (backfilled history) has
-      // no per-date checkbox of its own -- governed by showOlderData
-      // instead, so it has real, explicit on/off control rather than
-      // silently bypassing every date checkbox.
-      if (f.acqDate && !offeredDates.has(f.acqDate)) {
-        return filt.showOlderData;
-      }
       return !(f.sensor && f.acqDate && offeredDates.has(f.acqDate)
         && !filt.sensorDates.has(f.sensor + '|' + f.acqDate));
     }
@@ -4451,8 +4450,6 @@
         });
       });
 
-      const olderCb = document.getElementById('cb-older');
-      if (olderCb) olderCb.addEventListener('change', () => { filt.showOlderData = olderCb.checked; applyFilt(); });
     }
 
     /* ─── VIEW CONTROLS ──────────────────────────────────────── */
@@ -4559,7 +4556,6 @@
           showWui: true,
           showCrown: true,
           activeOnly: false,
-          showOlderData: true,
         };
         Object.keys(FT).forEach(t => { const cb = document.getElementById('cb-' + t); if (cb) cb.checked = true });
         const wuiCb = document.getElementById('cb-wui-only'); if (wuiCb) wuiCb.checked = false;
@@ -4568,7 +4564,6 @@
         const showWuiCb = document.getElementById('cb-show-wui'); if (showWuiCb) showWuiCb.checked = true;
         const showCrownCb = document.getElementById('cb-show-crown'); if (showCrownCb) showCrownCb.checked = true;
         const activeOnlyCb = document.getElementById('cb-active-only'); if (activeOnlyCb) activeOnlyCb.checked = false;
-        const olderCb = document.getElementById('cb-older'); if (olderCb) olderCb.checked = true;
         // Reset the sensor panel to its default (newest day, both
         // instruments) and rebuild the filter from the boxes, so the
         // controls and the map cannot disagree after a reset.
