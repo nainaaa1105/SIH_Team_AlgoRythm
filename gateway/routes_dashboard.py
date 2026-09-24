@@ -12,6 +12,7 @@ null section rather than failing the whole response. That is the normal
 state early in the pipeline, not an error.
 """
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -553,6 +554,17 @@ def _ptsi_for(db: Session, cluster_id: int) -> Optional[Dict[str, Any]]:
     }
 
 
+# BCCL/ECL's real administrative naming convention for the Jharia/Raniganj
+# coalfields ("Cluster 8 and Cluster 9 Coal Mines", "Cluster 6 (BCCL) Coal
+# Mines") -- genuine OSM names, not a bug, but an administrative zone label
+# reads as a much less useful LOCATION than an actual company/site name.
+# Matched the same way an absent name already is: try one more live,
+# narrow lookup for a real, specifically-named neighbour (see
+# nearest_named_industrial_feature's own "never invents a name" docstring)
+# rather than replace it with anything invented.
+_GENERIC_FACILITY_NAME = re.compile(r"^Cluster \d+", re.IGNORECASE)
+
+
 def _top_facility_for(
     db: Session, cluster_id: int, lon: Optional[float] = None, lat: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -570,16 +582,19 @@ def _top_facility_for(
         return None
     facility = db.get(Facility, row.facility_id)
     name = getattr(facility, "name", None)
+    name_is_generic = bool(name and _GENERIC_FACILITY_NAME.match(name))
 
     # The bulk OSM ingestion's tag list (app/enrichment/osm_facilities.py)
     # commonly matches a bare landuse=industrial polygon with no `name`
     # tag at all — the actual named company is a separate OSM element it
-    # never queried for. Rather than leave LOCATION blank, one live,
-    # narrow Overpass lookup for the nearest genuinely named industrial
-    # feature — real OSM data, never fabricated, and only used if it's
-    # close enough to plausibly be the same site.
+    # never queried for. Rather than leave LOCATION blank (or an
+    # administrative zone label like "Cluster 8 and Cluster 9 Coal
+    # Mines" — a real name, just not a specific site), one live, narrow
+    # Overpass lookup for the nearest genuinely named industrial feature
+    # — real OSM data, never fabricated, and only used if it's close
+    # enough to plausibly be the same site.
     nearby_named = None
-    if not name and lon is not None and lat is not None:
+    if (not name or name_is_generic) and lon is not None and lat is not None:
         from app.enrichment.osm_facilities import (
             named_feature_is_same_site,
             nearest_named_industrial_feature,
@@ -589,9 +604,14 @@ def _top_facility_for(
         if named_feature_is_same_site(candidate, row.distance_m):
             nearby_named = candidate["name"]
 
+    # Only actually swap the generic name out once a real, specific
+    # replacement was found — a generic-but-real name still beats
+    # showing nothing when the live lookup comes up empty.
+    display_name = None if (name_is_generic and nearby_named) else name
+
     return {
         "facility_id": row.facility_id,
-        "name": name,
+        "name": display_name,
         "nearby_named_feature": nearby_named,
         "facility_type": getattr(facility, "facility_type", None),
         "distance_m": row.distance_m,
