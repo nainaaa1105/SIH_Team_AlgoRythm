@@ -2829,7 +2829,6 @@
         state: d.state,
         district: d.district,
         confidence: d.confidence,
-        modelConfidence: d.model_confidence,
         sensor: d.sensor,
         sensorProduct: d.sensor_product,
         detectedAt: d.detected_at,
@@ -4033,7 +4032,6 @@
         '<div class="dp-row"><div class="dp-k">FRP (MW)</div><div class="dp-v hi' + (fire.isCrownFire ? ' crown-hot' : '') +
           '" style="color:' + (fire.isCrownFire ? '#1565c0' : info.color) + '">' + fmt(fire.frp, 1) + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">BRIGHTNESS</div><div class="dp-v">' + fmt(fire.brightness, 1, ' K') + '</div></div>' +
-        '<div class="dp-row"><div class="dp-k">MODEL CONF.</div><div class="dp-v">' + fmt(fire.modelConfidence, 1, '%') + '</div></div>' +
         '<div class="dp-row"><div class="dp-k">STATUS</div><div class="dp-v">' + (fire.status || '--') + '</div></div>' +
         threatBanners;
 
@@ -4700,7 +4698,6 @@
         w.row('Name', fire.name);
         w.row('Classification', info.label);
         w.row('Model class', fire.predictedClass);
-        w.row('Model confidence', num(fire.modelConfidence, 1, ' %'));
         w.row('Model version', cls.model_version);
         w.row('Location', [fire.district, fire.state].filter(Boolean).join(', '));
         w.row('Latitude', fire.lat.toFixed(5) + ' N');

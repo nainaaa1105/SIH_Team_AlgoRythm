@@ -284,7 +284,7 @@ def test_missing_values_are_shown_as_missing(html):
 def test_detail_panel_has_the_sections_the_brief_specifies(html):
     detail = html.split("function openDP")[1].split("async function loadEventDetail")[0]
     for field in ["LOCATION", "LAT / LON", "DETECTED", "SENSOR",
-                  "FRP (MW)", "BRIGHTNESS", "MODEL CONF.", "STATUS"]:
+                  "FRP (MW)", "BRIGHTNESS", "STATUS"]:
         assert field in detail, f"detail field missing: {field}"
 
 
@@ -292,10 +292,20 @@ def test_detail_panel_no_longer_shows_the_raw_sensor_detection_confidence(html):
     """Removed by request: DETECTION CONF. (the raw satellite-reported
     LOW/NOMINAL/HIGH quality flag) confused operators sitting right next
     to MODEL CONF. (the classifier's own confidence in the predicted
-    class) — two independent numbers that don't have to agree. Only
-    MODEL CONF. remains."""
+    class) — two independent numbers that don't have to agree."""
     detail = html.split("function openDP")[1].split("async function loadEventDetail")[0]
     assert "DETECTION CONF." not in detail
+
+
+def test_detail_panel_no_longer_shows_model_confidence(html):
+    """Removed by later request: MODEL CONF. itself came out too, from
+    the Fire Detail panel, the PDF report, and the modelConfidence data
+    mapping that fed both — not just narrowed to one of the two
+    confidence numbers."""
+    detail = html.split("function openDP")[1].split("async function loadEventDetail")[0]
+    assert "MODEL CONF." not in detail
+    assert "modelConfidence" not in html
+    assert "Model confidence" not in html
 
 
 def test_explanations_come_from_the_model_not_the_client(html):
