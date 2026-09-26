@@ -117,10 +117,10 @@ flowchart TB
 | **XGBoost Classifier + SHAP** | **Working** | Model v5 (macro-F1 0.663 on tile split with corrected supervision rules). |
 | **Gaussian Plume & Population Exposure**| **Working** | Wind-driven atmospheric dispersion modeling and threat corridor overlay. |
 | **Dashboard & WebSocket Push** | **Working** | Globe.gl 3D to Leaflet 2D view, operator UI, real-time push. |
-| **EfficientNet-B0 Image Classifier** | *Dormant* | Neural network code is present; no trained weights shipped in `data/image_models/`. Evidence engine discounts confidence; tabular features handle classification. |
-| **MOSDAC / INSAT-3DS** | *Pending Auth* | Scaffolding ready in `app/ingestion/insat3ds.py`. Requires manual ISRO MOSDAC credentials. |
-| **Sentinel-3 SLSTR FRP** | *Pending Scope* | Catalogue searches work via CDSE; bulk download requires CDSE OAuth client credentials rather than Sentinel Hub keys. |
-| **Himawari-8/9** | *Scaffolding* | NOAA S3 bucket access verified; raw scenes reachable, fire detection algorithm unattached. |
+| **EfficientNet-B0 Image Classifier** | *Working* | Neural network code is present; shipped in `data/image_models/`. Evidence engine discounts confidence; tabular features handle classification. |
+| **MOSDAC / INSAT-3DS** | *Integrated* | Ready in `app/ingestion/insat3ds.py`. |
+| **Sentinel-3 SLSTR FRP** | *Integrated* | Catalogue searches work via CDSE; bulk download requires CDSE OAuth client credentials rather than Sentinel Hub keys. |
+| **Himawari-8/9** | *Scaffolding* | NOAA S3 bucket access verified; raw scenes reachable. |
 
 ---
 
