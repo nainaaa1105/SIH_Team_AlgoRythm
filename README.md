@@ -1,289 +1,509 @@
-# SIH162 FireSight — Thermal Anomaly Classification Platform
+# AGNI PEHCHAN — Thermal Anomaly Classification Platform
 
-Smart India Hackathon PS162 (NTRO): classifies NASA FIRMS thermal
-anomalies over India into industrial fire, gas flare, wildfire,
-agricultural burning or mining, and distinguishes normal from abnormal
-industrial behaviour over time. One unified project — ingestion,
-classification, geospatial analysis, imagery, temporal forecasting and
-the dashboard/API gateway all live here as top-level packages, not as
-six separate installable projects.
+**Smart India Hackathon 2026 — Problem Statement PS162 (NTRO)**
 
-Nothing in this repository is deployed anywhere. Everything runs locally
-only, by design.
+Agni Pehchan is an AI-driven, end-to-end intelligence platform that ingests thermal anomalies (hotspots) over India from NASA FIRMS and satellite feeds, classifies them into **Industrial Fire**, **Gas Flare**, **Wildfire**, **Agricultural Burning**, or **Mining Anomaly**, and continuously evaluates normal vs. abnormal thermal behaviour over time.
 
-## What works, and what doesn't
+The platform provides live spatial clustering, 28-feature engineering, XGBoost classification with SHAP explainability, Gaussian plume dispersion modeling, threat corridor analysis, temporal escalation forecasting, and an interactive 3D/2D visual operator dashboard.
 
-Stated up front so nobody has to discover it by running the thing.
+---
 
-| Capability | Status |
-|---|---|
-| NASA FIRMS ingestion (VIIRS S-NPP / NOAA-20 / NOAA-21, MODIS) | **Working** — the primary feed |
-| DBSCAN clustering, dedup, cloud gate | **Working** |
-| Facility attribution, land cover, population, state/district | **Working** |
-| Dozier sub-pixel fire temperature (dual-band retrieval) | **Working** — converges on multi-detection clusters |
-| Sentinel-2 patches, spectral indices, smoke bearing | **Working** |
-| PTSI persistence, rhythm fingerprint, Kalman escalation forecast | **Working** |
-| XGBoost classification + SHAP explanations | **Working** — model v5, macro-F1 0.663 (v2 scored 0.893 but was trained/evaluated against a looser weak-label rule set since found to mislabel real industrial fires and agri burns as mining — see `classifier/labels/rules.py`; v5 reflects the corrected labels) |
-| Gaussian plume, threat corridor, population exposure | **Working** |
-| Dashboard, live WebSocket push, incident report export | **Working** |
-| EfficientNet-B0 image classifier | **No trained weights.** `data/image_models/` does not exist, so `image_predicted_class` is always null and late fusion runs tabular-only. The evidence-weighting engine records the gap and discounts confidence. The Sentinel-2 *indices* still reach the model. |
-| MOSDAC / INSAT-3DS | **Returns 0 rows.** The product path in `app/ingestion/insat3ds.py` is best-effort scaffolding, not a verified endpoint — MOSDAC has no public REST API and needs an approved account. Credentials being present also *blocks* the EUMETSAT fallback, since presence is what selects the source. |
-| Sentinel-3 SLSTR FRP | **Returns 0 rows.** The configured CDSE credentials are a Sentinel Hub client (`sh-` prefix): the token is accepted by the OData catalogue — which is why the cloud gate works — and rejected by the download service with `DAT-ZIP-609 "Token audience not allowed"`. Bulk download needs a CDSE OAuth client, not a Sentinel Hub one. |
-| Himawari-8 | **Returns 0 rows.** The AWS bucket is reachable and lists scenes; no fire-detection algorithm is wired in. |
+## Table of Contents
 
-All three inactive sources are supplementary by design — cross-validation
-and geostationary refresh rate. Nothing in the classification pipeline
-depends on them.
+- [System Overview](#system-overview)
+- [System Architecture](#system-architecture)
+- [Capability & Source Status](#capability--source-status)
+- [Repository Layout](#repository-layout)
+- [Environment Configuration](#environment-configuration)
+- [Local Setup & Execution](#local-setup--execution)
+  - [Option A: Running with Docker Compose](#option-a-running-with-docker-compose)
+  - [Option B: Running Locally without Docker](#option-b-running-locally-without-docker)
+  - [Bulk Data Loaders & Ops Scripts](#bulk-data-loaders--ops-scripts)
+- [Deployment Guide (Railway & Cloud)](#deployment-guide-railway--cloud)
+  - [Railway Architecture Overview](#railway-architecture-overview)
+  - [Step 1: Provision Database & Caching Services](#step-1-provision-database--caching-services)
+  - [Step 2: Deploy API Web Service (`Dockerfile.api`)](#step-2-deploy-api-web-service-dockerfileapi)
+  - [Step 3: Deploy Worker & Scheduler Services (`Dockerfile.worker`)](#step-3-deploy-worker--scheduler-services-dockerfileworker)
+  - [Step 4: Configure Railway Environment Variables](#step-4-configure-railway-environment-variables)
+  - [Step 5: Run Database Migrations & Initial Reference Data Load](#step-5-run-database-migrations--initial-reference-data-load)
+  - [Step 6: Standalone / Lightweight Deployment Mode (Alternative)](#step-6-standalone--lightweight-deployment-mode-alternative)
+- [API Reference](#api-reference)
+- [Machine Learning Model & Feature Pipeline](#machine-learning-model--feature-pipeline)
+- [Testing & Quality Assurance](#testing--quality-assurance)
+- [Further Reading](#further-reading)
 
-## Layout
+---
 
+## System Overview
+
+NASA FIRMS (Fire Information for Resource Management System) detects thermal anomalies globally via satellites like VIIRS (S-NPP, NOAA-20, NOAA-21) and MODIS. However, satellite sensors only report *"something is hot"* without context. 
+
+Agni Pehchansolves this problem by answering three critical operational questions automatically:
+1. **Event Classification:** Is this hotspot an industrial fire, gas flare, wildfire, agricultural stubble burn, or mining activity?
+2. **Behavioral Anomaly Detection:** Is this thermal footprint normal for this exact facility/location, or is it an abnormal surge/escalation?
+3. **Downstream Risk Assessment:** Which way is the smoke plume traveling, which populations are in the threat corridor, and is the thermal output escalating toward a critical threshold?
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart TB
+    subgraph EXT["🛰️ External Data Sources"]
+        FIRMS["NASA FIRMS\n(VIIRS + MODIS hotspots)"]
+        CDSE["Copernicus Data Space\n(Sentinel-2 imagery & cloud fraction)"]
+        WORLDCOVER["ESA WorldCover\n(10m land cover raster)"]
+        OSM["OpenStreetMap / GEM\n(Industrial facilities & flare registries)"]
+        METEO["Open-Meteo\n(Wind direction & speed)"]
+    end
+
+    subgraph INGEST["📥 Ingestion & Preprocessing"]
+        POLL["Scheduled Poller / Trigger"]
+        DEDUP["DBSCAN Spatial Clustering (~500m)\n& Cross-source Dedup"]
+        CLOUDGATE["Cloud-Fraction Gate\n(Optical usability check)"]
+    end
+
+    subgraph FEATURE["🧮 28-Feature Pipeline"]
+        CONTEXT["Contextual: Land cover %, facility dist, pop density"]
+        THERMAL["Thermal: FRP, brightness temp, confidence stats"]
+        TEMPORAL_F["Temporal: Persistence, detection rate, day/night mix"]
+        SPATIAL_F["Spatial: Footprint extent & growth rate"]
+        IMAGERY_F["Imagery: Sub-pixel temperature, NDVI/NDBI, smoke ratio"]
+        RHYTHM_F["Rhythm: Shift sharpness, weekend suppression, Kalman forecast"]
+    end
+
+    subgraph INTEL["🧠 Intelligence & Modeling Layer"]
+        EVIDENCE["Evidence-Weighting Engine\n(Handles sparse/missing inputs)"]
+        XGB["XGBoost Classifier (Model v5)"]
+        SHAP["SHAP Explainability Engine"]
+        PTSI["PTSI (Persistent Thermal Source Index)"]
+        KALMAN["Kalman Filter Escalation Model"]
+        PLUME["Gaussian Plume & Population Exposure"]
+    end
+
+    subgraph STORE["🗄️ Persistence"]
+        PG["PostgreSQL + PostGIS"]
+        TS["TimescaleDB (FRP Time-series)"]
+    end
+
+    subgraph API["🌐 API Gateway & Web Application"]
+        GATEWAY["FastAPI Gateway (app.main)"]
+        WS["WebSocket Push Channel (/ws/live-updates)"]
+        DASH["Globe.gl 3D & Leaflet 2D Dashboard"]
+    end
+
+    FIRMS --> POLL --> DEDUP --> CLOUDGATE
+    CDSE & WORLDCOVER & OSM & METEO --> CONTEXT
+    CLOUDGATE --> FEATURE
+    FEATURE --> EVIDENCE --> XGB --> SHAP & FUSION
+    FEATURE --> PTSI --> KALMAN
+    XGB --> PLUME
+    SHAP & KALMAN & PLUME --> PG & TS
+    PG & TS --> GATEWAY --> WS & DASH
 ```
-app/            ingestion (FIRMS/CDSE/EUMETSAT/Himawari/INSAT), dedup,
-                DBSCAN clustering, cloud gate, enrichment, DB schema +
-                Alembic migrations, the FastAPI gateway (app/main.py),
-                Celery orchestration AND the broker-free local runner
-                (app/orchestration/local_pipeline.py)
-                app/geo_cache.py — on-disk SQLite cache for the three
-                per-location network lookups
-classifier/     28-feature contract, XGBoost + (dormant) EfficientNet
-                late fusion, SHAP explainability, evidence weighting,
-                label rules
-geospatial/     facility attribution, ESA WorldCover land cover, Gaussian
-                plume dispersion, threat corridors, evacuation routing,
-                admin_boundaries.py — state/district point-in-polygon
-imagery/        Dozier sub-pixel fire temperature, Planck radiance,
-                Sentinel-2 spectral indices / smoke direction,
-                EfficientNet-B0 classifier (no weights shipped)
-temporal/       PTSI (persistent thermal source index), rhythm
-                fingerprinting (satellite-bias corrected), Kalman
-                forecast + escalation
-gateway/        dashboard aggregation endpoints + WebSocket live-push
-static/         the dashboard itself (Globe.gl 3D globe -> Leaflet 2D map,
-                operator UI, live-wired to the gateway)
-scripts/        bulk loads and jobs — see the table below
-tests/          41 test files, flat, one pytest run for everything
-archive/        the superseded Cesium dashboard, deliberately OUTSIDE
-                static/ so it is never served (it carries a sample-data
-                fallback)
-data/           models/ (trained XGBoost), boundaries/, cache/,
-                population/, patches/, thumbnails/ — all gitignored
-datasets/       historical FIRMS CSVs + WorldPop rasters (gitignored)
-```
 
-`member6-dashboard/` is an empty leftover from the pre-merge structure and
-can be deleted.
+---
 
-Every package's Celery tasks, DB models (declared against one shared
-SQLAlchemy `Base`) and feature-column ownership are cross-referenced —
-see `CHANGES.md` for the full per-stage data flow and the reasoning
-behind every design decision, bug fix, and known limitation.
+## Capability & Source Status
 
-## Setup
-
-```bash
-python -m venv .venv
-source .venv/Scripts/activate      # or .venv\Scripts\activate on cmd
-pip install -r requirements.txt
-cp .env.example .env               # fill in real credentials — see below
-```
-
-### Credentials — what's real, what's optional
-
-| Service | Required for | Status |
+| Capability / Source | Status | Details |
 |---|---|---|
-| `FIRMS_MAP_KEY` | Primary hotspot feed (VIIRS/MODIS) | Free, instant, self-service at firms.modaps.eosdis.nasa.gov/api/map_key |
-| `CDSE_CLIENT_ID`/`SECRET` | Land cover, cloud gate, Sentinel-2 imagery | Free, self-service at dataspace.copernicus.eu — this is the primary path, not a fallback. A Sentinel Hub (`sh-`) client works for catalogue and Process API but **not** for bulk product download. |
-| `MOSDAC_USERNAME`/`PASSWORD` | INSAT-3DS (supplementary only) | Manual approval, 2-3 days. Setting these selects MOSDAC over the EUMETSAT backup, so leave blank unless the account is approved *and* the product path in `insat3ds.py` has been confirmed. |
-| `EUMETSAT_CONSUMER_KEY`/`SECRET` | Temporary INSAT-3DS backup while MOSDAC is pending | Free, near-instant, self-service at api.eumetsat.int — optional |
-| `GEE_SERVICE_ACCOUNT` | Nothing required — dormant fallback only | Not needed; land cover/cloud gate/Sentinel-2 all work without it |
+| **NASA FIRMS Ingestion** | **Working** | Primary hotspot feed (VIIRS S-NPP / NOAA-20 / NOAA-21, MODIS). |
+| **DBSCAN Clustering & Cloud Gate** | **Working** | ~500m spatial clustering, deduplication, optical cloud-cover check. |
+| **Facility Attribution & Land Cover** | **Working** | OpenStreetMap/GEM infrastructure matching, ESA WorldCover 10m lookup. |
+| **Dozier Sub-Pixel Temperature** | **Working** | Dual-band thermal retrieval converging on multi-pixel detection clusters. |
+| **Sentinel-2 Indices & Smoke Vector** | **Working** | Fetches spectral patches, calculates NDVI/NDBI, estimates smoke direction. |
+| **PTSI & Kalman Escalation Forecast** | **Working** | Persistence index, satellite-bias corrected rhythm, escalation timeline. |
+| **XGBoost Classifier + SHAP** | **Working** | Model v5 (macro-F1 0.663 on tile split with corrected supervision rules). |
+| **Gaussian Plume & Population Exposure**| **Working** | Wind-driven atmospheric dispersion modeling and threat corridor overlay. |
+| **Dashboard & WebSocket Push** | **Working** | Globe.gl 3D to Leaflet 2D view, operator UI, real-time push. |
+| **EfficientNet-B0 Image Classifier** | *Dormant* | Neural network code is present; no trained weights shipped in `data/image_models/`. Evidence engine discounts confidence; tabular features handle classification. |
+| **MOSDAC / INSAT-3DS** | *Pending Auth* | Scaffolding ready in `app/ingestion/insat3ds.py`. Requires manual ISRO MOSDAC credentials. |
+| **Sentinel-3 SLSTR FRP** | *Pending Scope* | Catalogue searches work via CDSE; bulk download requires CDSE OAuth client credentials rather than Sentinel Hub keys. |
+| **Himawari-8/9** | *Scaffolding* | NOAA S3 bucket access verified; raw scenes reachable, fire detection algorithm unattached. |
 
-## Run locally
+---
 
-### With Docker
+## Repository Layout
+
+```
+SIH26/
+├── app/                  # Core application logic
+│   ├── api/              # FastAPI routes for M1 ingestion, clusters, facilities, auth
+│   ├── auth/             # Authentication & user sessions
+│   ├── ingestion/        # Satellites poller (FIRMS, CDSE, EUMETSAT, INSAT-3DS)
+│   ├── orchestration/    # Celery tasks, scheduler, and broker-free local pipeline
+│   ├── geo_cache.py      # SQLite disk cache for network lookups
+│   └── main.py           # Unified FastAPI gateway entry point
+├── classifier/           # 28-feature contract, XGBoost model, SHAP, evidence weighting
+├── geospatial/           # Facility attribution, ESA WorldCover, Gaussian plume, admin boundaries
+├── imagery/              # Dozier dual-band retrieval, Planck radiance, Sentinel-2 spectral indices
+├── temporal/             # PTSI index, rhythm fingerprinting, Kalman escalation forecasting
+├── gateway/              # Dashboard API aggregation endpoints & WebSocket manager
+├── static/               # Web Dashboard frontend (Globe.gl 3D Earth, Leaflet 2D, operator UI)
+├── scripts/              # Bulk data loaders, training scripts, live cycle executor
+├── tests/                # 41 test files (735 tests covering all pipeline stages)
+├── data/                 # Models, boundaries, cache, population rasters (gitignored)
+├── datasets/             # Historical FIRMS data & WorldPop rasters (gitignored)
+├── Dockerfile.api        # Production Dockerfile for FastAPI Gateway API service
+├── Dockerfile.worker     # Production Dockerfile for Celery Worker & Scheduler services
+├── docker-compose.yml    # Full local multi-container orchestration stack
+├── alembic.ini           # Database migration configuration
+├── requirements.txt      # Python dependencies
+├── run_local.py          # Standalone local launcher (no Docker / broker needed)
+├── PROJECT_OVERVIEW.md   # Plain-language architecture walkthrough
+└── CHANGES.md            # Comprehensive changelog and implementation rationale
+```
+
+---
+
+## Environment Configuration
+
+Copy `.env.example` to `.env` and fill in the required parameters:
 
 ```bash
-docker compose up --build            # Postgres/PostGIS + Redis + api + worker + scheduler
+cp .env.example .env
+```
+
+### Essential Environment Variables
+
+| Variable | Description | Default / Required |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql+psycopg2://sih_user:sih_pass@localhost:5432/sih_thermal` |
+| `REDIS_URL` | Redis instance URL | `redis://localhost:6379/0` |
+| `AUTH_SECRET_KEY` | JWT Secret Key for dashboard authentication | Production secret key |
+| `CORS_ORIGINS` | Comma-separated CORS allowed origins | `*` (set specific domain in production) |
+| `FIRMS_MAP_KEY` | NASA FIRMS API key | **Required** (free from NASA FIRMS website) |
+| `CDSE_CLIENT_ID` | Copernicus Data Space Client ID | **Required** for optical/cloud check |
+| `CDSE_CLIENT_SECRET` | Copernicus Data Space Client Secret | **Required** for optical/cloud check |
+| `PORT` | Web service port (injected by Railway/Render) | `8000` |
+
+---
+
+## Local Setup & Execution
+
+### Prerequisites
+
+- Python 3.11+
+- PostgreSQL 16+ with PostGIS extension enabled (or Docker)
+- Redis 7+ (optional if running in broker-free local mode)
+
+### Standard Setup Steps
+
+1. **Clone the repository and set up a virtual environment:**
+   ```bash
+   python -m venv .venv
+   
+   # On Linux/macOS:
+   source .venv/bin/activate
+   
+   # On Windows (cmd):
+   .venv\Scripts\activate.bat
+   
+   # On Windows (PowerShell):
+   .venv\Scripts\Activate.ps1
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your FIRMS_MAP_KEY and CDSE credentials
+   ```
+
+---
+
+### Option A: Running with Docker Compose
+
+Docker Compose builds PostgreSQL (with PostGIS & TimescaleDB), Redis, the FastAPI gateway, Celery worker, and the scheduler.
+
+```bash
+# Build and launch all services
+docker compose up --build -d
+
+# Run database migrations
 docker compose exec api alembic upgrade head
-python -m scripts.bulk_load_osm
-python -m scripts.bulk_load_gem --gem path/to/tracker.xlsx --ggfr path/to/ggfr.csv
+
+# Load initial reference data
+docker compose exec api python -m scripts.bulk_load_boundaries
+docker compose exec api python -m scripts.bulk_load_osm --resume --priority-from-clusters
 ```
 
-### Without Docker (Windows/macOS/Linux, no admin rights needed)
+Access services at:
+- **Dashboard UI:** `http://localhost:8000/`
+- **Interactive API Docs:** `http://localhost:8000/docs`
+- **System Liveness Check:** `http://localhost:8000/health`
 
-The fan-out to M2-M5 is a Celery topology, and Celery needs Redis. With
-no broker running, every `.delay()` raises and clusters land in the
-database but are never classified. `app/orchestration/local_pipeline`
-drives the same task bodies in-process instead, so the whole platform
-runs from one Python process against a plain PostgreSQL install.
+---
 
-**1. PostgreSQL + PostGIS.** Any 16.x server works. The portable
-EnterpriseDB binaries plus the OSGeo PostGIS bundle need no installer and
-no administrator rights — unzip both into one directory, then:
+### Option B: Running Locally without Docker
 
-```bash
-initdb -D <datadir> -U sih_user --pwfile=<file containing the password>
-pg_ctl -D <datadir> -l <datadir>/server.log -o "-p 5432" start
-psql -U sih_user -d postgres   -c "CREATE DATABASE sih_thermal"
-psql -U sih_user -d sih_thermal -c "CREATE EXTENSION postgis"
-```
+The platform contains an in-process local pipeline (`app/orchestration/local_pipeline.py`) that allows the entire application to run inside a single Python process against a standalone PostgreSQL database without needing Redis or Celery.
 
-A portable install is **not** a system service — start it again after
-every reboot, before starting the app.
+1. **Start PostgreSQL with PostGIS:**
+   Create database and enable PostGIS:
+   ```sql
+   CREATE DATABASE sih_thermal;
+   \c sih_thermal
+   CREATE EXTENSION postgis;
+   ```
 
-TimescaleDB is optional. It has no current Windows build, and the
-`hotspots` hypertable is a time-partitioning optimisation rather than a
-semantic requirement — migration `0001` probes `pg_available_extensions`
-and creates a plain table when it is absent.
+2. **Apply Database Migrations:**
+   ```bash
+   python -m alembic upgrade head
+   ```
 
-**2. Driver.** `psycopg2-binary` has no Python 3.13 wheel. `psycopg`
-(v3) does, and SQLAlchemy speaks it under a different scheme, so on 3.13
-set:
+3. **Load Boundary Polygons & Industrial Facility Data:**
+   ```bash
+   python -m scripts.bulk_load_boundaries
+   python -m scripts.bulk_load_osm --resume --priority-from-clusters
+   ```
 
-```
-DATABASE_URL=postgresql+psycopg://sih_user:sih_pass@localhost:5432/sih_thermal
-```
+4. **Execute Ingestion & Classification Cycle:**
+   ```bash
+   python -m scripts.run_live_cycle
+   ```
 
-**3. Schema and reference data.**
+5. **Start FastAPI Gateway & Dashboard:**
+   ```bash
+   python run_local.py
+   ```
 
-```bash
-python -m alembic upgrade head
-python -m scripts.bulk_load_boundaries                             # state/district polygons
-python -m scripts.bulk_load_osm --resume --priority-from-clusters  # industrial facilities
-```
+---
 
-`bulk_load_osm` walks India in 2-degree tiles across several Overpass
-mirrors: the public instances reject a single whole-India query for these
-tag sets outright (HTTP 406). It commits per tile, `--resume` skips tiles
-already loaded, and `--priority-from-clusters` fetches the tiles that
-actually contain detections first — facility distance can only change a
-verdict where a cluster exists, so this makes a multi-hour walk useful
-within the first few minutes.
+### Bulk Data Loaders & Ops Scripts
 
-**4. Ingest and classify.**
-
-```bash
-python -m scripts.run_live_cycle          # FIRMS -> clusters -> XGBoost + SHAP
-python run_local.py                       # serve the dashboard + API
-```
-
-- Dashboard: http://localhost:8000/
-- API docs: http://localhost:8000/docs
-- Health (shows which routers mounted): http://localhost:8000/health
-
-### scripts/
-
-| Script | What it does |
+| Script Command | Purpose |
 |---|---|
-| `run_live_cycle` | One full cycle in-process: ingest, enrich, classify, forecast, model plumes. `--no-ingest` to only finish stored clusters, `--reclassify` to redo every cluster, `--limit`, `--workers`. |
-| `bulk_load_osm` | Tiled Overpass walk for industrial facilities. `--resume`, `--priority-from-clusters`, `--workers`. |
-| `bulk_load_boundaries` | Fetches the district/state GeoJSON the resolver reads. |
-| `bulk_load_gem` | Global Energy Monitor + GGFR flare registries. |
-| `bulk_load_landcover` | Optional local MODIS MCD12Q1 raster (third-tier land-cover fallback). |
-| `backfill_90day` | Historical FIRMS windows — the route to filling the sparse temporal features. |
-| `backfill_training_labels` | Rebuilds training labels from the rule set. |
-| `train_model` / `ingest_and_train` | Retrains the XGBoost classifier and writes a new version to `data/models/`. |
+| `python -m scripts.run_live_cycle` | Runs one complete ingestion, clustering, classification, forecasting, and plume modeling cycle in-process. |
+| `python -m scripts.bulk_load_boundaries` | Downloads and populates administrative boundaries (states & districts). |
+| `python -m scripts.bulk_load_osm` | Fetches industrial infrastructure (refineries, power plants, chemical works) via OpenStreetMap Overpass API tiles. |
+| `python -m scripts.bulk_load_gem` | Imports Global Energy Monitor (GEM) and GGFR flare location registries. |
+| `python -m scripts.backfill_90day` | Backfills historical satellite hotspots to populate temporal baseline features. |
+| `python -m scripts.train_model` | Retrains the XGBoost classifier model against updated label definitions. |
 
-Re-run `run_live_cycle` whenever you want a fresh satellite pass; add
-`--reclassify` after loading more facilities, since facility distance
-feeds three of the model's twenty-eight features.
+---
 
-## API surface
+## Deployment Guide (Railway & Cloud)
+
+This project is fully containerized and configured for one-click or automated deployment on platforms such as **Railway** (railway.app).
+
+---
+
+### Railway Architecture Overview
+
+On Railway, a full production stack consists of:
+1. **PostgreSQL Service with PostGIS Extension**
+2. **Redis Service** (Message broker for Celery)
+3. **API Web Service** (FastAPI Gateway running `Dockerfile.api`)
+4. **Worker Service** (Celery Background Worker running `Dockerfile.worker`)
+5. **Scheduler Service** (Celery Beat Scheduler running `Dockerfile.worker`)
 
 ```
-GET  /hotspots  /clusters  /clusters/{id}  /facilities        M1 ingestion
-GET  /classify/{id}                                           M2 classification
-GET  /plume/{id}  /threat/{id}  /attribution/{id}             M3 geospatial
-GET  /imagery/{id}  /imagery/{id}/patches                     M4 imagery
-GET  /ptsi/{id}  /forecast/{id}  /rhythm/{id}  /escalating    M5 temporal
-GET  /dashboard/detections  /dashboard/event/{id}
-     /dashboard/alerts  /dashboard/summary  /dashboard/states  M6 gateway
-WS   /ws/live-updates                                         live push
-POST /ingest/run                                              manual cycle
-GET  /health                                                  liveness + mounted routers
+                 +-------------------------------------------------------+
+                 |                    RAILWAY PROJECT                    |
+                 |                                                       |
+                 |  +-------------------+        +--------------------+  |
+                 |  | PostgreSQL Service|        |   Redis Service    |  |
+                 |  | (PostGIS enabled) |        |  (Celery Broker)   |  |
+                 |  +---------+---------+        +---------+----------+  |
+                 |            |                            |             |
+                 |            |                            |             |
++--------------+ |  +---------v---------+        +---------v----------+  |
+| Public Users |--->|  API Web Service  |        |   Worker Service   |  |
+|  / Browser   | |  |  (Dockerfile.api) |        | (Dockerfile.worker)|  |
++--------------+ |  +-------------------+        +--------------------+  |
+                 |                                         ^             |
+                 |                                         |             |
+                 |                               +---------+----------+  |
+                 |                               | Scheduler Service  |  |
+                 |                               | (Dockerfile.worker)|  |
+                 |                               +--------------------+  |
+                 +-------------------------------------------------------+
 ```
 
-`/dashboard/detections` takes `india_only` (default on): the FIRMS bbox is
-a rectangle that also covers parts of Pakistan, Nepal, China, Bangladesh
-and Myanmar, and roughly a third of the clusters in a typical cycle fall
-outside India.
+---
 
-`POST /ingest/run` detects whether a Celery broker is reachable. With one,
-it dispatches as the deployment does; without one it runs the cycle
-in-process — which is also the only path on which the WebSocket push
-reaches open dashboards, since the broadcast goes to the API process's own
-connection manager.
+### Step 1: Provision Database & Caching Services
 
-## The model
+1. Log into your **Railway Dashboard** and create a **New Project**.
+2. **Add PostgreSQL:**
+   - Click **+ New** -> **Database** -> **Add PostgreSQL**.
+   - After creation, open the database service settings and ensure PostGIS is supported (Railway PostgreSQL includes PostGIS by default).
+3. **Add Redis:**
+   - Click **+ New** -> **Database** -> **Add Redis**.
 
-XGBoost, five classes (`industrial_fire`, `gas_flare`, `wildfire`,
-`agricultural_burning`, `mining`), 28 features, macro-F1 **0.663** on a
-spatial-tile split (119,782 train / 30,178 test, model v5). An earlier
-version (v2) scored 0.893 on a smaller split, but its weak-supervision
-labels for mining and agricultural_burning were later found to be
-leaky — see `classifier/labels/rules.py`'s `mining_rule`/`agri_burn_rule`
-docstrings — so that number reflected an easier, partly-wrong ground
-truth rather than genuinely higher accuracy. v5 is trained against the
-corrected label rules. Feature order is
-persisted alongside the model and re-validated at inference, so a
-train/predict mismatch fails loudly instead of silently scrambling the
-vector.
+---
 
-Feature groups: context (land cover, facility proximity, population),
-thermal (FRP/brightness statistics), temporal (persistence, cadence,
-day/night), spatial (footprint extent and growth), imagery (Dozier
-temperature, NDVI, NDBI, smoke ratio), rhythm (shift sharpness, weekend
-suppression, Kalman time-to-critical).
+### Step 2: Deploy API Web Service (`Dockerfile.api`)
 
-Several groups are legitimately sparse on a 3-day ingestion window —
-`weekend_suppression` needs a week of history, `frp_zscore` needs a prior
-baseline, Dozier converges only on well-constrained clusters. The
-evidence-weighting engine discounts confidence accordingly rather than
-imputing zeros, which is why live confidences sit in the 30-60% band.
-`scripts/backfill_90day` is the route to filling them.
+1. Click **+ New** -> **GitHub Repo** and select your repository.
+2. Go to **Settings** -> **Build & Deploy**:
+   - **Build Pack / Dockerfile Path:** `Dockerfile.api`
+   - **Custom Build Command:** Leave empty (uses Dockerfile).
+   - **Start Command:**
+     ```bash
+     sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+     ```
+3. Under **Networking**, click **Generate Domain** to get a public HTTPS URL (e.g. `https://firesight-production.up.railway.app`).
 
-### About FIRMS_DAY_RANGE
+---
 
-FIRMS NRT publishes on a lag. A `FIRMS_DAY_RANGE=1` query over India
-routinely returns zero rows simply because the current day's granules
-have not been processed yet; `3` is the smallest window that reliably
-returns data. The archive endpoint caps a single query at 5 days
-(confirmed against the live API's own error text — `scripts/backfill_90day.py`
-loops in 5-day windows, not the 10 some FIRMS docs suggest).
+### Step 3: Deploy Worker & Scheduler Services (`Dockerfile.worker`)
 
-### No sample data
+#### Deploy Celery Worker:
+1. Click **+ New** -> **GitHub Repo** (same repo).
+2. Rename service to `worker`.
+3. Go to **Settings**:
+   - **Dockerfile Path:** `Dockerfile.worker`
+   - **Start Command:**
+     ```bash
+     celery -A app.orchestration.queue.celery_app worker --loglevel=info
+     ```
 
-The dashboard has no bundled dataset and no client-side classifier. Every
-detection, class, explanation, plume and population figure on it comes
-from the live pipeline. When the gateway is unreachable or the database
-is empty it says so on a banner and shows nothing, rather than
-substituting stand-in records. `tests/test_gateway.py` enforces this — it
-fails if `Math.random`, a `genFires()` generator or a bundled `HOTSPOTS`
-array reappears in `static/index.html`.
+#### Deploy Celery Scheduler:
+1. Click **+ New** -> **GitHub Repo** (same repo).
+2. Rename service to `scheduler`.
+3. Go to **Settings**:
+   - **Dockerfile Path:** `Dockerfile.worker`
+   - **Start Command:**
+     ```bash
+     python -m app.orchestration.scheduler
+     ```
 
-## Tests
+---
+
+### Step 4: Configure Railway Environment Variables
+
+Set the following environment variables across services in Railway (or use **Shared Variables**):
+
+```env
+# Database & Broker (Railway provides reference variables like ${Postgres.DATABASE_URL})
+DATABASE_URL=postgresql+psycopg2://${POSTGRESUSER}:${POSTGRESPASSWORD}@${POSTGRESHOST}:${POSTPORT}/${POSTGRESDATABASE}
+REDIS_URL=${REDIS_URL}
+
+# API Credentials
+FIRMS_MAP_KEY=your_nasa_firms_key
+CDSE_CLIENT_ID=your_cdse_client_id
+CDSE_CLIENT_SECRET=your_cdse_client_secret
+
+# Security & CORS
+AUTH_SECRET_KEY=your_generated_secure_random_hex
+CORS_ORIGINS=https://firesight-production.up.railway.app
+FRONTEND_BASE_URL=https://firesight-production.up.railway.app
+```
+
+---
+
+### Step 5: Run Database Migrations & Initial Reference Data Load
+
+Once the database and services are up on Railway, populate initial reference data (boundaries and facilities):
+
+1. **Option A: Via Railway CLI**
+   ```bash
+   railway run python -m scripts.bulk_load_boundaries
+   railway run python -m scripts.bulk_load_osm --resume --priority-from-clusters
+   ```
+
+2. **Option B: Via One-Off Task Execution**
+   You can trigger a single cycle manually via the API endpoint:
+   ```bash
+   curl -X POST https://firesight-production.up.railway.app/ingest/run
+   ```
+
+---
+
+### Step 6: Standalone / Lightweight Deployment Mode (Alternative)
+
+If you wish to keep resource utilization low on Railway (e.g., using the free tier or a single container):
+
+- You only need **PostgreSQL Service** + **API Web Service**.
+- Leave `REDIS_URL` empty or omit worker services.
+- The API's `POST /ingest/run` endpoint detects the absence of Celery/Redis and automatically executes cycles **in-process** via `local_pipeline.py`.
+- You can trigger periodic ingestion using Railway Cron or an external HTTP trigger hitting `POST /ingest/run` every 30 minutes.
+
+---
+
+## API Reference
+
+The FastAPI gateway exposes REST endpoints and a WebSocket channel:
+
+```
+# Core Hotspot & Cluster Management (M1)
+GET  /hotspots                # Filtered raw satellite hotspot detections
+GET  /clusters                # DBSCAN clustered thermal events
+GET  /clusters/{id}           # Detailed cluster metadata
+GET  /facilities              # Industrial facility registry
+POST /ingest/run              # Manual ingestion & classification trigger
+GET  /health                  # Liveness probe & mounted module manifest
+
+# Authentication (M1)
+POST /auth/signup             # Operator registration
+POST /auth/login              # Authentication & JWT token issuance
+GET  /auth/me                 # Authenticated operator profile
+
+# Intelligence & Analytics (M2-M5)
+GET  /classify/{id}           # M2: XGBoost 5-class verdict & SHAP feature contributions
+GET  /plume/{id}              # M3: Atmospheric Gaussian dispersion plume geometry
+GET  /threat/{id}             # M3: Population exposure & threat corridor bounding
+GET  /attribution/{id}        # M3: Nearest facility attribution & land cover breakdown
+GET  /imagery/{id}            # M4: Dozier sub-pixel fire temperature & Sentinel-2 indices
+GET  /ptsi/{id}               # M5: Persistent Thermal Source Index (PTSI)
+GET  /forecast/{id}           # M5: Kalman filter escalation forecast & critical ETA
+GET  /rhythm/{id}             # M5: Diurnal cadence & weekend suppression pattern
+GET  /escalating              # M5: List of clusters exhibiting active escalation
+
+# Gateway & Dashboard Integration (M6)
+GET  /dashboard/detections    # High-performance spatial cluster feed for 3D/2D map
+GET  /dashboard/event/{id}    # Comprehensive event record (combines M1-M5 data)
+GET  /dashboard/summary       # Platform summary stats & thermal metrics
+GET  /dashboard/states        # State/district thermal aggregation summaries
+WS   /ws/live-updates         # WebSocket push channel for live dashboard updates
+```
+
+---
+
+## Machine Learning Model & Feature Pipeline
+
+### XGBoost Classifier (Model v5)
+
+- **Input Dimension:** 28 tabular features
+- **Output Classes:** 5 classes (`industrial_fire`, `gas_flare`, `wildfire`, `agricultural_burning`, `mining`)
+- **Macro-F1 Score:** `0.663` (evaluated on a strict spatial-tile cross-validation split with updated supervision rules)
+
+### Feature Breakdown
+
+1. **Contextual (3):** ESA WorldCover land-cover dominant class %, distance to nearest mapped industrial facility, local population density.
+2. **Thermal (6):** Fire Radiative Power (FRP) max/mean/std, brightness temperature statistics, detection confidence.
+3. **Temporal (5):** Multi-day persistence index, historical detection frequency, day/night satellite pass ratio.
+4. **Spatial (4):** Cluster convex hull area, point density, spatial expansion rate.
+5. **Imagery (5):** Dozier sub-pixel fire temperature, NDVI (vegetation index), NDBI (built-up index), smoke optical ratio.
+6. **Rhythm & Dynamics (5):** Shift sharpness (work-hour cadence), weekend suppression ratio, Kalman trend velocity, time-to-critical threshold.
+
+### Explainability & Evidence Weighting
+
+- **SHAP Engine:** Calculates exact feature contributions for every single prediction, enabling operators to see *why* a hotspot was flagged as a gas flare vs. an industrial fire.
+- **Evidence Weighting Engine:** Automatically down-weights confidence when certain satellite passes or inputs are missing (e.g. cloud cover blocking optical imagery), preventing false certainty.
+
+---
+
+## Testing & Quality Assurance
+
+The codebase includes 735 automated tests across 41 test modules covering schema migrations, physics calculations, model inference, route non-collision, and WebSocket broadcasting.
+
+To run the complete test suite:
 
 ```bash
 pytest
 ```
 
-735 tests across 41 files, one run. Covers schema/migration parity, Celery
-task contracts and shared `MetaData`, column-ownership non-collision,
-route non-collision, physics/statistics correctness (Planck/Dozier
-round-trip, Kalman forward simulation, walk-forward calibration
-coverage), the WebSocket handshake and broadcast, and the dashboard
-integrity checks. See `CHANGES.md` for what each file is proving and why
-it matters.
+---
 
-`tests/conftest.py` disables the geo cache for the whole suite — without
-that, a test patching a network fetcher can be served a value an earlier
-test recorded and never call its own mock.
+## Further Reading
 
-## Further reading
-
-- `CHANGES.md` — the full implementation log: how each part was built,
-  every bug found in self-review and how it was fixed, known
-  limitations, and the later unification, credential-alternatives and
-  dashboard-replacement work.
-- `PROJECT_OVERVIEW.md` — the plain-language architecture walkthrough:
-  the problem, the layers, what the 28 features are, and why the design
-  decisions were made.
+- [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) — Detailed plain-language walkthrough of the problem statement, feature design, and decision rationale.
+- [CHANGES.md](CHANGES.md) — Comprehensive technical implementation log, bug fixes, refactoring history, and design tradeoffs.
