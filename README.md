@@ -6,6 +6,8 @@ Agni Pehchan is an AI-driven, end-to-end intelligence platform that ingests ther
 
 The platform provides live spatial clustering, 28-feature engineering, XGBoost classification with SHAP explainability, Gaussian plume dispersion modeling, threat corridor analysis, temporal escalation forecasting, and an interactive 3D/2D visual operator dashboard.
 
+
+LINK : https://sihteamalgorythm-production.up.railway.app/
 ---
 
 ## Table of Contents
