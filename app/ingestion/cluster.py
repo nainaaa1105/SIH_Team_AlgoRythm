@@ -81,6 +81,11 @@ def build_new_clusters(records: List[Dict], labels: np.ndarray) -> List[ClusterA
     return assignments
 
 
+# Upper bound on how many (new, existing) distance pairs are held in
+# memory at once while matching -- about 32 MB per working array.
+_MATCH_CHUNK_CELLS = 4_000_000
+
+
 def match_to_existing_clusters(
     new_clusters: List[ClusterAssignment],
     existing_clusters: List[Tuple[int, float, float]],  # (cluster_id, centroid_lon, centroid_lat)
@@ -112,16 +117,27 @@ def match_to_existing_clusters(
         return new_clusters
 
     new_coords = np.array([[c.centroid_lon, c.centroid_lat] for c in new_clusters])
-    existing_coords = np.array([[c[1], c[2]] for c in existing_clusters])
+    existing_lon = np.array([c[1] for c in existing_clusters])
+    existing_lat = np.array([c[2] for c in existing_clusters])
 
-    # Distance matrix between new_clusters (rows) and existing_clusters (cols)
-    diff = new_coords[:, np.newaxis, :] - existing_coords[np.newaxis, :, :]
-    dist_matrix = np.linalg.norm(diff, axis=2)
+    # The nearest existing cluster for each new one, computed a slice of
+    # new clusters at a time. The one-shot (new x existing x 2) array this
+    # replaced needed ~40 bytes per pair: with 50k+ stored clusters, a
+    # batch of a few thousand new ones wanted 6 GB+ and the process was
+    # killed. Per-row results are identical -- only the peak memory
+    # changes, and it no longer grows with the number of stored clusters
+    # times the batch size.
+    rows_per_slice = max(1, _MATCH_CHUNK_CELLS // len(existing_clusters))
+    for start in range(0, len(new_clusters), rows_per_slice):
+        stop = min(start + rows_per_slice, len(new_clusters))
+        dlon = new_coords[start:stop, 0][:, np.newaxis] - existing_lon[np.newaxis, :]
+        dlat = new_coords[start:stop, 1][:, np.newaxis] - existing_lat[np.newaxis, :]
+        dist = np.sqrt(dlon * dlon + dlat * dlat)
 
-    nearest = np.argmin(dist_matrix, axis=1)
-    for r, c in enumerate(nearest):
-        if dist_matrix[r, c] <= eps_degrees:
-            new_clusters[r].cluster_id = existing_clusters[c][0]
+        nearest = np.argmin(dist, axis=1)
+        for offset, c in enumerate(nearest):
+            if dist[offset, c] <= eps_degrees:
+                new_clusters[start + offset].cluster_id = existing_clusters[c][0]
 
     return new_clusters
 

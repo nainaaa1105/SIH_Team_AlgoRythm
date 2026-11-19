@@ -48,7 +48,11 @@ logger = logging.getLogger(__name__)
 # Per-cluster work is dominated by network waits (WorldCover COG reads,
 # Open-Meteo), so threads help a lot; but every step also talks to
 # Postgres, so this must stay well under the SQLAlchemy pool ceiling.
-DEFAULT_WORKERS = 6
+# Kept at 2 for the in-process scheduler path: each worker holds its own
+# raster/model working set, and the web server shares this container's
+# memory, so more workers meant a higher peak for little extra throughput
+# on a 30-minute cycle. Shell runs can still pass --workers explicitly.
+DEFAULT_WORKERS = 2
 
 
 @dataclass

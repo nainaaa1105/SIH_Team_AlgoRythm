@@ -2,6 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /srv
 
+# glibc creates a separate memory arena per thread by default, and the
+# classification pipeline runs several threads that each allocate and free
+# large arrays -- the arenas fragment and the process holds on to memory it
+# no longer uses. Capping them keeps the idle footprint (and the RAM bill)
+# lower at no meaningful speed cost.
+ENV MALLOC_ARENA_MAX=2
+
 # GDAL headers needed by rasterio; libpq-dev for psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin libgdal-dev libpq-dev gcc \

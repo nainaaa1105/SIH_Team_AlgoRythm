@@ -29,17 +29,23 @@ def test_scheduler_uses_run_cycle_safely_not_the_raw_celery_dispatch():
         scheduler.shutdown(wait=False)
 
 
-def test_scheduler_runs_soon_by_default_not_after_a_full_poll_interval():
-    """Without this, the app would serve a stale/empty dashboard for up
-    to POLL_INTERVAL_MINUTES (30 min default) after every single
-    restart/redeploy -- run_soon=True (the default) schedules the first
-    cycle a few seconds out instead."""
+def test_first_cycle_is_delayed_after_startup_but_not_a_full_poll_interval():
+    """The first cycle used to fire 5 seconds after boot. When that cycle
+    got the process killed, every restart immediately repeated it: a crash
+    loop that used up Railway's retries and left the site down for days.
+    It now waits STARTUP_DELAY_SECONDS so the server is up and healthy
+    first -- but still well short of a full poll interval, so a restart
+    doesn't leave the data stale for 30 minutes."""
+    from app.orchestration.scheduler import STARTUP_DELAY_SECONDS
+
+    assert STARTUP_DELAY_SECONDS >= 60, "must give the server time to come up before heavy work"
     scheduler = start_scheduler()
     try:
         job = scheduler.get_job("ingestion_cycle")
         assert job.next_run_time is not None
         seconds_until_first_run = (job.next_run_time - datetime.now(timezone.utc)).total_seconds()
-        assert 0 <= seconds_until_first_run < 30
+        assert STARTUP_DELAY_SECONDS - 10 <= seconds_until_first_run <= STARTUP_DELAY_SECONDS
+        assert seconds_until_first_run < 30 * 60
     finally:
         scheduler.shutdown(wait=False)
 

@@ -18,16 +18,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# The first cycle runs this long after startup, not immediately. It used to
+# fire 5 seconds after boot, so a cycle that got the process killed was
+# retried the instant it restarted -- a crash loop that used up Railway's
+# restart retries and left the service down for days. The database now
+# persists, so the dashboard has data to show during the wait.
+STARTUP_DELAY_SECONDS = 300
+
+
 def start_scheduler(run_soon: bool = True) -> BackgroundScheduler:
-    """`run_soon=True` (the default) schedules the first cycle a few
-    seconds out instead of waiting a full poll_interval_minutes before
-    doing anything -- matters for the FastAPI startup hook, where the app
-    would otherwise serve a stale/empty dashboard for up to 30 minutes
-    after every restart. Runs through run_cycle_safely -- the same
-    Celery-vs-in-process decision /ingest/run makes, not a separate path,
-    so a deployment with no live Celery worker still gets classified
-    results from the scheduled poll instead of silently accumulating an
-    unclassified backlog again.
+    """`run_soon=True` (the default) schedules the first cycle
+    STARTUP_DELAY_SECONDS out instead of waiting a full
+    poll_interval_minutes before doing anything. Runs through
+    run_cycle_safely -- the same Celery-vs-in-process decision
+    /ingest/run makes, not a separate path, so a deployment with no live
+    Celery worker still gets classified results from the scheduled poll
+    instead of silently accumulating an unclassified backlog again.
     """
     settings = get_settings()
     scheduler = BackgroundScheduler(timezone="UTC")
@@ -36,7 +42,9 @@ def start_scheduler(run_soon: bool = True) -> BackgroundScheduler:
         "interval",
         minutes=settings.poll_interval_minutes,
         id="ingestion_cycle",
-        next_run_time=(datetime.now(timezone.utc) + timedelta(seconds=5)) if run_soon else None,
+        next_run_time=(
+            datetime.now(timezone.utc) + timedelta(seconds=STARTUP_DELAY_SECONDS)
+        ) if run_soon else None,
         max_instances=1,     # never let a slow cycle overlap the next tick
         coalesce=True,
     )
