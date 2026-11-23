@@ -93,8 +93,9 @@ def test_run_cycle_safely_routes_to_in_process_without_a_live_worker():
 
     calls = {"local_pipeline": False, "celery_path": False}
 
-    def fake_local_run_cycle():
+    def fake_local_run_cycle(limit=None):
         calls["local_pipeline"] = True
+        calls["limit"] = limit
         return {"processed": 0, "classified": 0, "failed": 0}
 
     def fake_run_ingestion_cycle(*a, **k):
@@ -119,6 +120,8 @@ def test_run_cycle_safely_routes_to_in_process_without_a_live_worker():
     assert calls["local_pipeline"] is True
     assert calls["celery_path"] is False
     assert summary["mode"] == "in-process"
+    # The in-process cycle is capped so one cycle can never be a huge batch.
+    assert calls["limit"] == pipeline_module.MAX_CLUSTERS_PER_CYCLE
 
 
 def test_run_cycle_safely_routes_to_celery_with_a_live_worker():

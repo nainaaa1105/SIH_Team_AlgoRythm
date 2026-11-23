@@ -78,10 +78,12 @@ def download_latest_product(settings: Settings | None = None, dest_dir: str = "d
     url = f"{settings.mosdac_base_url.rstrip('/')}/data/insat3ds/fire/{today}/latest_fire.nc"
 
     try:
-        resp = session.get(url, timeout=60)
+        # (connect, read): a dead or unauthorised MOSDAC path should fail in
+        # seconds rather than hold the cycle for a full minute every poll.
+        resp = session.get(url, timeout=(10, 25))
         resp.raise_for_status()
-    except requests.RequestException:
-        logger.exception("INSAT-3DS download failed (url=%s) — verify MOSDAC access/path", url)
+    except requests.RequestException as exc:
+        logger.warning("INSAT-3DS download failed (url=%s): %s — verify MOSDAC access/path", url, exc)
         return None
 
     dest = Path(dest_dir) / f"insat3ds_fire_{today}.nc"

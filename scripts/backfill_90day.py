@@ -50,7 +50,10 @@ def backfill(total_days: int, dispatch_jobs: bool) -> None:
         if records:
             deduped = full_dedup(records)
             with session_scope() as session:
-                existing_clusters = load_active_cluster_centroids(session)
+                # window_days=None: a backfill walks back through old date
+                # windows, so it must match against clusters of any age or
+                # it would split every long-lived fire into duplicates.
+                existing_clusters = load_active_cluster_centroids(session, window_days=None)
                 assignments = cluster_batch(deduped, existing_clusters, settings)
             # Cloud-fraction lookups hit CDSE/GEE over the network — done
             # outside the DB transaction above, same reasoning as the live

@@ -341,6 +341,24 @@ def named_feature_is_same_site(
     return candidate_distance <= matched_distance_m + NAMED_FACILITY_MAX_EXCESS_M
 
 
+# The live lookup (a dashboard click on a facility that has no usable name
+# of its own) used to try one server, once, and forget it had failed -- so
+# while that server was unreachable from the host, every click paid a
+# timeout and logged a stack trace. It now falls back across the mirrors the
+# bulk loader already uses, with a short per-attempt timeout, and once every
+# mirror has failed it stops trying for a few minutes instead of retrying
+# on every request.
+NAMED_LOOKUP_TIMEOUT_S = 6
+NAMED_LOOKUP_COOLDOWN_S = 300
+_named_lookup_paused_until = 0.0
+
+
+def reset_named_lookup_cooldown() -> None:
+    """Clear the pause after a total failure (used by tests)."""
+    global _named_lookup_paused_until
+    _named_lookup_paused_until = 0.0
+
+
 def nearest_named_industrial_feature(
     lon: float, lat: float, radius_m: float = 1500.0,
 ) -> Optional[Dict]:
@@ -348,12 +366,16 @@ def nearest_named_industrial_feature(
     industrial/power tag within `radius_m` — or None if nothing real is
     that close. Never invents a name; a facility with no named OSM
     neighbour simply gets none."""
+    global _named_lookup_paused_until
     from app import geo_cache
 
     cache_key = geo_cache.make_key("named_facility", lon, lat, int(radius_m))
     cached = geo_cache.get(cache_key)
     if cached is not geo_cache.MISS:
         return cached
+
+    if time.monotonic() < _named_lookup_paused_until:
+        return None
 
     tag_clauses = "\n  ".join(
         f'{kind}["name"]{tag}(around:{{radius:.0f}},{{lat}},{{lon}});'
@@ -364,16 +386,26 @@ def nearest_named_industrial_feature(
         "[out:json][timeout:15];\n(\n  " + tag_clauses + "\n);\nout center 10;"
     ).format(radius=radius_m, lat=lat, lon=lon)
 
-    try:
-        resp = requests.post(
-            OVERPASS_MIRRORS[0], data={"data": query}, timeout=15,
-            headers={"User-Agent": OVERPASS_USER_AGENT},
-        )
-        resp.raise_for_status()
-        elements = resp.json().get("elements", [])
-    except Exception:
-        logger.info(
-            "Named-facility lookup failed for (%s, %s)", lon, lat, exc_info=True,
+    elements = None
+    for endpoint in OVERPASS_MIRRORS:
+        try:
+            resp = requests.post(
+                endpoint, data={"data": query}, timeout=NAMED_LOOKUP_TIMEOUT_S,
+                headers={"User-Agent": OVERPASS_USER_AGENT},
+            )
+            resp.raise_for_status()
+            elements = resp.json().get("elements", [])
+            break
+        except Exception as exc:  # noqa: BLE001
+            logger.info(
+                "Named-facility lookup failed on %s for (%s, %s): %s", endpoint, lon, lat, exc,
+            )
+
+    if elements is None:
+        _named_lookup_paused_until = time.monotonic() + NAMED_LOOKUP_COOLDOWN_S
+        logger.warning(
+            "Named-facility lookup failed on every Overpass mirror; pausing it for %d seconds",
+            NAMED_LOOKUP_COOLDOWN_S,
         )
         return None
 

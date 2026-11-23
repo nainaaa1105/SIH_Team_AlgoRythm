@@ -7,12 +7,12 @@ POLL_INTERVAL_MINUTES, and what `scripts/backfill_90day.py` calls in a
 loop over historical date windows.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.config import Settings, get_settings
 from app.db.models import Cluster, Hotspot
@@ -62,13 +62,46 @@ def load_existing_hotspot_keys(session: Session, since: datetime) -> set:
     return keys
 
 
-def load_active_cluster_centroids(session: Session) -> List[Tuple[int, float, float]]:
-    """Return (cluster_id, lon, lat) for every active cluster, decoding
-    each PostGIS WKBElement centroid via GeoAlchemy2's shapely helper.
+# New detections are only matched against clusters seen this recently. A
+# recurring source (a flare, a plant) updates `last_seen` every time it
+# fires, so it always stays inside the window; a source silent for longer
+# than this simply starts a fresh cluster if it reappears. Without a bound,
+# every cycle loaded and compared against every cluster ever stored, which
+# grows by ~1,500-1,800 a day.
+MATCH_WINDOW_DAYS = 30
+
+# At most this many unclassified clusters are worked through per in-process
+# cycle. The rest are picked up by the next cycle (newest first), so a big
+# backlog drains over several cycles instead of landing on one run.
+MAX_CLUSTERS_PER_CYCLE = 1500
+
+
+def load_active_cluster_centroids(
+    session: Session,
+    window_days: Optional[int] = MATCH_WINDOW_DAYS,
+    now: Optional[datetime] = None,
+) -> List[Tuple[int, float, float]]:
+    """Return (cluster_id, lon, lat) for active clusters seen within the
+    last `window_days` (all active clusters when it is None, which the
+    historical backfill needs), decoding each PostGIS WKBElement centroid
+    via GeoAlchemy2's shapely helper.
+
+    Only the id and centroid columns are fetched: matching needs nothing
+    else, and loading every column of tens of thousands of cluster rows on
+    each cycle was a large, avoidable chunk of the app's memory.
     """
     from geoalchemy2.shape import to_shape
 
-    clusters = session.execute(select(Cluster).where(Cluster.status == "active")).scalars().all()
+    stmt = (
+        select(Cluster)
+        .options(load_only(Cluster.id, Cluster.centroid))
+        .where(Cluster.status == "active")
+    )
+    if window_days is not None:
+        cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=window_days)
+        stmt = stmt.where(or_(Cluster.last_seen >= cutoff, Cluster.last_seen.is_(None)))
+
+    clusters = session.execute(stmt).scalars().all()
     result = []
     for c in clusters:
         point = to_shape(c.centroid)
@@ -323,7 +356,7 @@ def run_cycle_safely(classify: bool = True) -> Dict:
 
     from app.orchestration.local_pipeline import run_cycle
 
-    summary = run_cycle()
+    summary = run_cycle(limit=MAX_CLUSTERS_PER_CYCLE)
     summary["mode"] = "in-process"
     return summary
 

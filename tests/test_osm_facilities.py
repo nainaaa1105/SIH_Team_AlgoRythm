@@ -1,5 +1,6 @@
 import math
 
+import pytest
 from shapely.geometry import Point, Polygon
 
 from app.enrichment.osm_facilities import (
@@ -167,6 +168,13 @@ class _FakeResponse:
         return self._payload
 
 
+@pytest.fixture(autouse=True)
+def _reset_named_lookup_cooldown():
+    osm_facilities.reset_named_lookup_cooldown()
+    yield
+    osm_facilities.reset_named_lookup_cooldown()
+
+
 def test_nearest_named_industrial_feature_picks_the_closest_named_element(monkeypatch):
     payload = {
         "elements": [
@@ -194,6 +202,40 @@ def test_nearest_named_industrial_feature_fails_closed_on_network_error(monkeypa
 
     monkeypatch.setattr(osm_facilities.requests, "post", _raise)
     assert nearest_named_industrial_feature(83.9968, 21.8212) is None
+
+
+def test_named_lookup_falls_back_to_the_next_mirror(monkeypatch):
+    payload = {"elements": [{"tags": {"name": "Mirror Two Works"}, "lat": 21.8219, "lon": 83.9957}]}
+    tried = []
+
+    def _post(url, *a, **k):
+        tried.append(url)
+        if len(tried) == 1:
+            raise ConnectionError("Network is unreachable")
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(osm_facilities.requests, "post", _post)
+
+    result = nearest_named_industrial_feature(83.9968, 21.8212)
+    assert result is not None and result["name"] == "Mirror Two Works"
+    assert tried == list(osm_facilities.OVERPASS_MIRRORS[:2])
+
+
+def test_named_lookup_pauses_after_every_mirror_fails(monkeypatch):
+    calls = []
+
+    def _raise(*a, **k):
+        calls.append(1)
+        raise ConnectionError("Network is unreachable")
+
+    monkeypatch.setattr(osm_facilities.requests, "post", _raise)
+
+    assert nearest_named_industrial_feature(83.9968, 21.8212) is None
+    assert len(calls) == len(osm_facilities.OVERPASS_MIRRORS)
+
+    # Within the cooldown no further network attempt is made.
+    assert nearest_named_industrial_feature(83.9970, 21.8214) is None
+    assert len(calls) == len(osm_facilities.OVERPASS_MIRRORS)
 
 
 def test_nearest_named_industrial_feature_reads_way_center_not_just_node_latlon(monkeypatch):
