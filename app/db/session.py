@@ -15,11 +15,24 @@ from app.config import get_settings
 _engine = None
 _SessionLocal = None
 
+# Replace each pooled connection after 30 minutes. Without this the app's
+# connections lived forever, and each server-side Postgres process kept the
+# memory its past (spatial) queries had used: four idle connections had
+# grown to ~1.65 GB each, ~7 GB of billed database RAM in total. A recycled
+# connection hands that memory back. pool_pre_ping already makes any
+# connection closed from the server side harmless.
+POOL_RECYCLE_SECONDS = 1800
+
 
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(get_settings().database_url, pool_pre_ping=True, future=True)
+        _engine = create_engine(
+            get_settings().database_url,
+            pool_pre_ping=True,
+            pool_recycle=POOL_RECYCLE_SECONDS,
+            future=True,
+        )
     return _engine
 
 
